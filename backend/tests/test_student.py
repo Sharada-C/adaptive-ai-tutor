@@ -6,8 +6,10 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_get_student_mastery():
-    response = client.get("/students/1/mastery")
+def test_get_student_mastery(test_student):
+    response = client.get(
+        f"/students/{test_student}/mastery"
+    )
 
     assert response.status_code == 200
 

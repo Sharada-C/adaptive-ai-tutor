@@ -7,7 +7,7 @@ from app.api import evaluation
 client = TestClient(app)
 
 
-def test_evaluate_updates_mastery(monkeypatch):
+def test_evaluate_updates_mastery(monkeypatch, test_student):
     def fake_evaluate_answer(
         question,
         expected_answer,
@@ -29,7 +29,7 @@ def test_evaluate_updates_mastery(monkeypatch):
     response = client.post(
         "/tutor/evaluate",
         json={
-            "student_id": 1,
+            "student_id": test_student,
             "concept_id": 1,
             "question": "What is process management?",
             "expected_answer": "It manages processes.",

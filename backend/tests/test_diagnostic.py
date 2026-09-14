@@ -6,7 +6,7 @@ from app.api import diagnostic
 client = TestClient(app)
 
 
-def test_diagnostic_start(monkeypatch):
+def test_diagnostic_start(monkeypatch,test_student):
     def fake_generate_diagnostic(db, student_id, subject_id, student_level, limit):
         return [
             {
@@ -36,7 +36,7 @@ def test_diagnostic_start(monkeypatch):
     response = client.post(
         "/tutor/diagnostic/start",
         json={
-            "student_id": 1,
+            "student_id": test_student,
             "subject_id": 1,
             "limit": 2,
         },
@@ -46,7 +46,7 @@ def test_diagnostic_start(monkeypatch):
 
     data = response.json()
 
-    assert data["student_id"] == 1
+    assert data["student_id"] == test_student
     assert data["subject_id"] == 1
     assert "session_id" in data
     assert len(data["questions"]) == 2
