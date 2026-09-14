@@ -1,0 +1,27 @@
+Network Protocols
+
+Network protocols are rules that define how devices communicate over a network. Protocols allow devices to exchange data in a consistent and predictable way.
+
+HTTP
+
+HTTP is a network protocol used for communication between clients and servers on the web. It defines how requests and responses are exchanged.
+
+HTTPS
+
+HTTPS is a version of HTTP that uses encryption to protect communication between a client and server.
+
+TCP
+
+TCP is a transport protocol that provides reliable, ordered delivery of data between communicating devices.
+
+UDP
+
+UDP is a transport protocol that provides a connectionless method of sending data. It does not provide the same delivery guarantees as TCP.
+
+IP
+
+IP is a network protocol used to address and route packets between devices across networks.
+
+Protocol Examples
+
+HTTP, HTTPS, TCP, UDP, and IP are examples of network protocols. Different protocols provide different communication functions within a network.

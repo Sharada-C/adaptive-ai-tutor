@@ -1,0 +1,56 @@
+name: Backend Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: tutor
+          POSTGRES_PASSWORD: tutor_password
+          POSTGRES_DB: adaptive_tutor
+        options: >-
+          --health-cmd "pg_isready -U tutor -d adaptive_tutor"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Create database tables
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://tutor:tutor_password@localhost:5432/adaptive_tutor
+        run: |
+          python create_tables.py
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://tutor:tutor_password@localhost:5432/adaptive_tutor
+        run: |
+          pytest -q

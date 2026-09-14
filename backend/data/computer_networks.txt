@@ -1,0 +1,23 @@
+COMPUTER NETWORKS
+
+Network Fundamentals
+
+A computer network is a collection of interconnected devices that communicate with each other. Networks allow devices to share data and resources.
+
+Network Devices
+
+Network devices are hardware components that help devices communicate over a network. Common network devices include computers, servers, switches, routers, and wireless access points.
+
+Switches connect devices within a local network. A switch uses MAC addresses to forward data to the appropriate device.
+
+Routers connect different networks and forward packets between them. Routers use IP addresses to determine where packets should be forwarded.
+
+Network Protocols
+
+Network protocols are rules that define how devices communicate over a network. Protocols allow devices to exchange data in a consistent and predictable way.
+
+Examples of network protocols include HTTP, HTTPS, TCP, UDP, and IP.
+
+Network Architecture
+
+Network architecture describes how network components are organized and how they communicate. Common approaches include client-server and peer-to-peer architectures.
