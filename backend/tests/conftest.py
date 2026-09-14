@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+# Make the backend directory importable so tests can import app.*
 sys.path.insert(
     0,
     str(Path(__file__).resolve().parents[1]),
@@ -17,7 +18,12 @@ def test_student():
     db = SessionLocal()
 
     try:
-        subject = db.query(Subject).filter(Subject.id == 1).first()
+        # Create the subject required by diagnostic tests.
+        subject = (
+            db.query(Subject)
+            .filter(Subject.id == 1)
+            .first()
+        )
 
         if not subject:
             subject = Subject(
@@ -28,27 +34,44 @@ def test_student():
             db.add(subject)
             db.flush()
 
-        concept = db.query(Concept).filter(Concept.id == 1).first()
-
-        if not concept:
-            concept = Concept(
-                id=1,
-                subject_id=subject.id,
-                name="Test Concept",
-                description="Test concept for automated tests.",
+        # Create the concepts required by diagnostic tests.
+        for concept_id, concept_name in [
+            (1, "Test Concept 1"),
+            (2, "Test Concept 2"),
+        ]:
+            concept = (
+                db.query(Concept)
+                .filter(Concept.id == concept_id)
+                .first()
             )
-            db.add(concept)
-            db.flush()
 
-        user = db.query(User).filter(
-            User.username == "pytest_user"
-        ).first()
+            if not concept:
+                db.add(
+                    Concept(
+                        id=concept_id,
+                        subject_id=subject.id,
+                        name=concept_name,
+                        description="Test concept for automated tests.",
+                    )
+                )
+
+        db.flush()
+
+        # Create a test user.
+        user = (
+            db.query(User)
+            .filter(User.username == "pytest_user")
+            .first()
+        )
 
         if not user:
-            user = User(username="pytest_user")
+            user = User(
+                username="pytest_user",
+            )
             db.add(user)
             db.flush()
 
+        # Create the student's profile.
         profile = (
             db.query(StudentProfile)
             .filter(StudentProfile.user_id == user.id)
