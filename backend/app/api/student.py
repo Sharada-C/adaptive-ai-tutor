@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.models.curriculum import Concept, Subject
 from app.db.database import SessionLocal
 from app.models.student import (
     ConceptMastery,
@@ -101,7 +102,137 @@ def create_student_profile(
     db.commit()
     db.refresh(profile)
 
-    return profile
+    return {
+        "id": profile.id,
+        "user_id": profile.user_id,
+        "learning_level": profile.learning_level,
+        "overall_mastery": 0.0,
+        "subject_mastery": [],
+        "concepts_to_strengthen": [],
+    }
+
+
+@router.get(
+    "/{user_id}/profile",
+    response_model=StudentProfileResponse,
+)
+def get_student_profile(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    profile = (
+        db.query(StudentProfile)
+        .filter(StudentProfile.user_id == user_id)
+        .first()
+    )
+
+    if not profile:
+        raise HTTPException(
+            status_code=404,
+            detail="Student profile not found",
+        )
+
+    mastery_records = (
+        db.query(ConceptMastery, Concept, Subject)
+        .join(
+            Concept,
+            ConceptMastery.concept_id == Concept.id,
+        )
+        .join(
+            Subject,
+            Concept.subject_id == Subject.id,
+        )
+        .filter(
+            ConceptMastery.student_id == profile.id,
+        )
+        .all()
+    )
+
+    if mastery_records:
+        overall_mastery = (
+            sum(
+                mastery.mastery_score
+                for mastery, concept, subject in mastery_records
+            )
+            / len(mastery_records)
+        )
+    else:
+        overall_mastery = 0.0
+
+    subject_groups = {}
+
+    for mastery, concept, subject in mastery_records:
+        if subject.id not in subject_groups:
+            subject_groups[subject.id] = {
+                "subject_id": subject.id,
+                "subject_name": subject.name,
+                "scores": [],
+            }
+
+        subject_groups[subject.id]["scores"].append(
+            mastery.mastery_score
+        )
+
+    subject_mastery = []
+
+    for data in subject_groups.values():
+        mastery = (
+            sum(data["scores"]) / len(data["scores"])
+            if data["scores"]
+            else 0.0
+        )
+
+        subject_mastery.append(
+            {
+                "subject_id": data["subject_id"],
+                "subject_name": data["subject_name"],
+                "mastery": mastery,
+            }
+        )
+
+    concepts_to_strengthen = (
+        db.query(
+            ConceptMastery,
+            Concept,
+            Subject,
+        )
+        .join(
+            Concept,
+            ConceptMastery.concept_id == Concept.id,
+        )
+        .join(
+            Subject,
+            Concept.subject_id == Subject.id,
+        )
+        .filter(
+            ConceptMastery.student_id == profile.id,
+            ConceptMastery.mastery_score < 0.80,
+        )
+        .order_by(
+            ConceptMastery.mastery_score.asc()
+        )
+        .limit(5)
+        .all()
+    )
+
+    concepts_to_strengthen_response = [
+        {
+            "concept_id": mastery.concept_id,
+            "concept_name": concept.name,
+            "subject_name": subject.name,
+            "mastery": mastery.mastery_score,
+        }
+        for mastery, concept, subject in concepts_to_strengthen
+    ]
+
+    return {
+        "id": profile.id,
+        "user_id": profile.user_id,
+        "learning_level": profile.learning_level,
+        "overall_mastery": overall_mastery,
+        "subject_mastery": subject_mastery,
+        "concepts_to_strengthen": concepts_to_strengthen_response,
+    }
 
 
 @router.post(

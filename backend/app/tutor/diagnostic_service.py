@@ -191,6 +191,7 @@ def generate_diagnostic_content(
     concept: Concept,
     student_level: str,
     knowledge_text: str,
+    previous_questions: list[str] | None = None,
 ) -> dict:
     """
     Generate one topic-independent diagnostic item.
@@ -200,9 +201,33 @@ def generate_diagnostic_content(
     retrieved knowledge.
     """
 
+    previous_questions_text = "\n".join(
+        f"- {question}"
+        for question in (previous_questions or [])
+    )
+
+    if not previous_questions_text:
+        previous_questions_text = "None. This is the first question."
+
     prompt = f"""
 You are designing ONE diagnostic assessment item for an
 adaptive AI tutor.
+
+PREVIOUS QUESTIONS IN THIS DIAGNOSTIC
+-------------------------------------
+{previous_questions_text}
+
+Do NOT generate a question that tests the same fact,
+relationship, property, or subtopic as any previous question.
+
+If a previous question already tested one aspect of the
+CURRENT CONCEPT, choose a different aspect supported by the
+RETRIEVED KNOWLEDGE.
+
+The new question must add new conceptual coverage rather than
+rephrasing an earlier question.
+
+STUDENT LEVEL:
 
 STUDENT LEVEL:
 {student_level}
@@ -325,7 +350,17 @@ Before returning the JSON, verify:
 ============================================================
 EXPECTED ANSWER RULES
 ============================================================
+If the generated question is a True/False question:
 
+- The expected answer must be exactly "true" or "false".
+- Determine the truth value of the statement strictly from the
+  RETRIEVED KNOWLEDGE.
+- If the statement is explicitly supported by the RETRIEVED KNOWLEDGE,
+  the expected answer must be "true".
+- If the statement directly contradicts the RETRIEVED KNOWLEDGE,
+  the expected answer must be "false".
+- Do not choose the expected answer independently of the question.
+- The question and expected answer must never contradict each other.
 Generate a concise answer that directly answers the question.
 
 The answer must:
@@ -498,14 +533,15 @@ Before responding, verify:
     }
 
 
+
 def generate_diagnostic_question(
     db: Session,
     concept: Concept,
     student_level: str,
+    previous_questions: list[str] | None = None,
 ) -> dict:
     """
-    Generate one diagnostic question for a concept using
-    RAG knowledge.
+    Generate one diagnostic question for a concept using RAG knowledge.
     """
 
     knowledge_text = retrieve_diagnostic_knowledge(
@@ -517,6 +553,7 @@ def generate_diagnostic_question(
         concept=concept,
         student_level=student_level,
         knowledge_text=knowledge_text,
+        previous_questions=previous_questions,
     )
 
     return {
@@ -525,9 +562,7 @@ def generate_diagnostic_question(
         "question": content["question"],
         "expected_answer": content["expected_answer"],
         "evaluation_criteria": content["evaluation_criteria"],
-        "misconception_guidance": content[
-            "misconception_guidance"
-        ],
+        "misconception_guidance": content["misconception_guidance"],
     }
 
 
@@ -569,10 +604,16 @@ def generate_diagnostic(
     questions = []
 
     for concept in concepts:
+        previous_questions = [
+            item["question"]
+            for item in questions
+        ]
+
         question = generate_diagnostic_question(
             db=db,
             concept=concept,
             student_level=student_level,
+            previous_questions=previous_questions,
         )
 
         questions.append(question)

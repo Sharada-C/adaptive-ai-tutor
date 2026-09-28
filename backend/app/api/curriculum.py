@@ -115,6 +115,30 @@ def create_concept(
 
 
 
+@router.get(
+    "/{subject_id}/concepts",
+    response_model=list[ConceptResponse],
+)
+def get_concepts(
+    subject_id: int,
+    db: Session = Depends(get_db),
+):
+    subject = db.get(Subject, subject_id)
+
+    if not subject:
+        raise HTTPException(
+            status_code=404,
+            detail="Subject not found",
+        )
+
+    return (
+        db.query(Concept)
+        .filter(Concept.subject_id == subject_id)
+        .order_by(Concept.id)
+        .all()
+    )
+
+
 @router.post(
     "/generate",
     response_model=SavedCurriculumResponse,

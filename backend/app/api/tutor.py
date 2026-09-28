@@ -115,18 +115,16 @@ def generate_lesson(
             for item in misconceptions
         )
     else:
-        misconception_text = "None"
+        misconception_text = "None identified."
 
-    # Retrieve relevant knowledge for the current concept.
     retrieval_query = (
-        f"Concept: {context['concept']}. "
-        f"Description: {context['concept_description']}"
-        
+        f"{context['concept']}. "
+        f"Student misconception: {misconception_text}"
     )
 
     if misconceptions:
         retrieval_query += (
-            f" Known misconception: {misconception_text}"
+        f" Known misconception: {misconception_text}"
         )
 
     knowledge_chunks, knowledge_text = retrieve_knowledge(
@@ -135,6 +133,9 @@ def generate_lesson(
         concept_id=request.concept_id,
         limit=2,
     )
+    print("\n===== RETRIEVED KNOWLEDGE FOR RETEACH =====")
+    print(knowledge_text)
+    print("===========================================\n")
 
     prompt = f"""
 You are an evidence-grounded academic tutor.
@@ -168,6 +169,7 @@ RETRIEVED KNOWLEDGE
 
 TEACHING RULES
 --------------
+
 1. Explain only information explicitly contained in the
    RETRIEVED KNOWLEDGE.
 
@@ -204,18 +206,51 @@ TEACHING RULES
 11. If information needed to explain a detail is missing, say:
     "The available knowledge does not provide that detail."
 
-12. If information needed to explain something is missing, say:
-    "The available knowledge does not provide that detail."
+12. Do not use pretrained knowledge to fill missing information.
 
-13. Do not use pretrained knowledge to fill missing information.
+13. Do not expand abbreviations unless the expansion appears in
+    the RETRIEVED KNOWLEDGE.
 
-14. Do not expand abbreviations unless the expansion appears in
-    the retrieved knowledge.
+14. Keep the lesson appropriate for the student's level.
 
-15. Keep the lesson appropriate for the student's level.
+15. End with ONE short question that asks only for a fact explicitly
+  stated in the retrieved knowledge.
+16. Prefer questions that ask the learner to identify, name, or recall
+  information directly stated in the retrieved knowledge.
+17. Do not transform a stated fact into a question about purpose,
+  function, role, behavior, or effect unless that relationship is
+  explicitly stated in the retrieved knowledge.
 
-16. End with ONE short question whose answer can be found directly
-    in the retrieved knowledge.
+
+OUTPUT RULES
+------------
+
+16. Return ONLY the learner-facing lesson.
+
+17. Do NOT output or repeat any part of this prompt.
+
+18. Do NOT output labels such as:
+    "Concept Description:"
+    "Retrieved Knowledge:"
+    "Teaching Rules:"
+    "Lesson:"
+    "Final Question:"
+    or "Output:".
+
+19. Do NOT describe your instructions, reasoning, retrieved
+    knowledge, prompt, or teaching rules.
+
+20. Do NOT reproduce the RETRIEVED KNOWLEDGE verbatim unless
+    necessary. Present it as a natural explanation for the student.
+
+21. Do NOT include headings that describe the internal structure
+    of the prompt.
+
+22. The response should read as if a tutor is directly teaching
+    the student.
+
+23. The final question must appear naturally at the end of the
+    lesson without a "Final Question:" label.
 
 GROUNDING CHECK
 ---------------
@@ -267,17 +302,22 @@ def reteach(
         )
 
     misconceptions = context["misconceptions"]
+    has_specific_misconception = bool(misconceptions)
 
     if not misconceptions:
-        raise HTTPException(
-            status_code=400,
-            detail="No active misconception found for this concept.",
-        )
+        misconceptions = [
+            "No specific misconception was identified. The student's mastery is low, so provide a clear explanation of the core ideas."
+        ]
 
-    misconception_text = "\n".join(
-        f"- {item}"
-        for item in misconceptions
-    )
+    misconceptions = list(dict.fromkeys(misconceptions))
+
+    if has_specific_misconception:
+        misconception_text = "\n".join(
+            f"- {item}"
+            for item in misconceptions
+        )
+    else:
+        misconception_text = "None identified."
 
     # Include the misconception in the retrieval query
     # so that the retrieved knowledge is relevant to the
@@ -336,21 +376,31 @@ GROUNDING RULES
   or by the concept description.
 - Do not invent detailed examples or protocol behavior that is not
   present in the retrieved knowledge.
-- When giving an example, use only entities, relationships, and
-  behaviors supported by the retrieved knowledge.
+- Do not explain the function, behavior, relationship, or purpose of
+  any entity unless that information is explicitly stated in the
+  retrieved knowledge.
 - If the retrieved knowledge does not explain a detail, explicitly
   say that the available knowledge does not provide that detail.
-- Do not expand a short statement in the retrieved knowledge into
-  unsupported technical claims.
+- Do not expand, interpret, or infer anything from a short statement
+  in the retrieved knowledge.
+- If the retrieved knowledge only lists an entity, you may only state
+  that the entity is listed.
+- Do not infer its function, purpose, behavior, relationship, or role.
 - If the retrieved knowledge does not contain enough information,
   do not guess.
 - Do not introduce unrelated concepts unless they are necessary
   to explain the current concept.
 
+
 RETEACHING TASK
 ---------------
-Your task is to reteach the concept specifically to correct
-the student's misconception.
+If a specific misconception was identified, reteach the concept
+specifically to correct that misconception.
+
+If no specific misconception was identified, reteach the concept
+by clearly explaining its core ideas. Do not claim that the
+student misunderstood a specific fact.
+
 - Every example must be consistent with the retrieved knowledge.
 - Do not introduce domain-specific behavior, relationships, or
   properties that are absent from the retrieved knowledge.
@@ -359,18 +409,37 @@ the student's misconception.
 - Do not make claims that contradict the retrieved knowledge.
 
 Rules:
-- Clearly explain what the student misunderstood.
-- Contrast the incorrect idea with the correct idea.
-- Use a simple concrete example.
+- If a specific misconception was identified, explain what the student misunderstood and contrast it with the correct idea.
+- If no specific misconception was identified, explain the core concept directly without saying that the student misunderstood anything.
+- Do not use examples or analogies unless they are explicitly supported by the retrieved knowledge.
+- If the retrieved knowledge does not contain a suitable example,
+  do not invent one.
+- Do not use familiar real-world examples merely because they are
+  commonly associated with the concept.
 - Do not shame or criticize the student.
 - Do not repeat the previous explanation verbatim.
 - Keep the explanation appropriate for the student's level.
-- Focus on correcting the active misconception.
-- End with ONE short question that checks whether the misconception
-  has been corrected.
-- Before returning the explanation, internally check that the example
-  does not contradict the retrieved knowledge or the misconception.
+- If no specific misconception was identified, organize the retrieved
+  knowledge into a clear explanation of the core concept rather than
+  repeating the same statement in different words.
+- Do NOT use analogies, fictional scenarios, stories, or
+   invented examples.
+- If a specific misconception was identified, focus on correcting it.
+- If no specific misconception was identified, focus on clearly
+  teaching the core concept.
+- Use only facts and examples explicitly present in the EVIDENCE.
+FINAL GROUNDING CHECK
+---------------------
+Before producing the answer, remove any sentence that is not directly
+supported by the RETRIEVED KNOWLEDGE or CONCEPT DESCRIPTION.
 
+Do NOT use analogies, comparisons, fictional scenarios, stories,
+or phrases such as "Think of..." or "Imagine...".
+
+Do NOT state why learning the concept is useful or important unless
+that statement is explicitly supported by the retrieved knowledge.
+
+Do NOT add information merely because it is generally true.
 Return the teaching explanation and the checking question.
 """
 

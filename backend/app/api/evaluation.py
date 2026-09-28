@@ -196,36 +196,62 @@ def evaluate(
             misconception.resolved = True
 
     elif result == "partially_correct":
-    # Partial answers should not automatically resolve
-    # an existing misconception.
-    #
-    # However, if the evaluator identifies a genuine new
-    # misconception, store it.
+        # Partial answers should not automatically resolve
+        # an existing misconception.
+        #
+        # Only create a new misconception if the same
+        # misconception is not already active.
 
         if misconception_text:
-            misconception = Misconception(
-                student_id=request.student_id,
-                concept_id=request.concept_id,
-                description=misconception_text,
-                resolved=False,
+            existing_misconception = (
+                db.query(Misconception)
+                .filter(
+                    Misconception.student_id == request.student_id,
+                    Misconception.concept_id == request.concept_id,
+                    Misconception.description == misconception_text,
+                    Misconception.resolved.is_(False),
+                )
+                .first()
             )
 
-            db.add(misconception)
+            if not existing_misconception:
+                misconception = Misconception(
+                    student_id=request.student_id,
+                    concept_id=request.concept_id,
+                    description=misconception_text,
+                    resolved=False,
+                )
+
+                db.add(misconception)
 
     elif result == "incorrect":
-    # Incorrect answers may create an active misconception
-    # when the evaluator identified one.
+        # Incorrect answers may create an active misconception
+        # when the evaluator identifies one.
+        #
+        # Do not create a duplicate if the same misconception
+        # is already active.
 
         if misconception_text:
-            misconception = Misconception(
-                student_id=request.student_id,
-                concept_id=request.concept_id,
-                description=misconception_text,
-                resolved=False,
+            existing_misconception = (
+                db.query(Misconception)
+                .filter(
+                    Misconception.student_id == request.student_id,
+                    Misconception.concept_id == request.concept_id,
+                    Misconception.description == misconception_text,
+                    Misconception.resolved.is_(False),
+                )
+                .first()
             )
 
-            db.add(misconception)
+            if not existing_misconception:
+                misconception = Misconception(
+                    student_id=request.student_id,
+                    concept_id=request.concept_id,
+                    description=misconception_text,
+                    resolved=False,
+                )
 
+                db.add(misconception)
     # ---------------------------------------------------------
     # 7. Commit before adaptive decision
     # ---------------------------------------------------------

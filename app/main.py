@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.db.database import engine
-
 from app.api.curriculum import router as curriculum_router
 from app.api.student import router as student_router
 from app.api.assessment import router as assessment_router
@@ -37,7 +36,6 @@ app.add_middleware(
 
 api_router = APIRouter()
 
-
 api_router.include_router(curriculum_router)
 api_router.include_router(student_router)
 api_router.include_router(assessment_router)
@@ -48,7 +46,6 @@ api_router.include_router(evaluation_router)
 api_router.include_router(next_router)
 api_router.include_router(knowledge_router)
 api_router.include_router(diagnostic_router)
-
 
 app.include_router(api_router)
 

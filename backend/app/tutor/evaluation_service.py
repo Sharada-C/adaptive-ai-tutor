@@ -31,7 +31,6 @@ def _extract_json_object(response: str) -> dict:
         .strip()
     )
 
-    # First try parsing the complete response.
     try:
         parsed = json.loads(response)
 
@@ -41,7 +40,6 @@ def _extract_json_object(response: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Otherwise, find the first valid JSON object.
     decoder = json.JSONDecoder()
 
     for match in re.finditer(r"\{", response):
@@ -69,9 +67,14 @@ def evaluate_answer(
 ) -> dict:
     """
     Evaluate a student's answer using topic-independent
-    semantic evaluation.
+    claim-level semantic analysis.
 
-    The evaluator does not contain subject-specific rules.
+    The LLM identifies whether student claims are:
+    - supported
+    - contradicting the expected answer
+    - unrelated
+
+    Python then determines the final pedagogical result.
     """
 
     if not question.strip():
@@ -87,7 +90,48 @@ def evaluate_answer(
             "feedback": "No answer was provided.",
             "misconception": None,
         }
+    # ---------------------------------------------------------
+    # True/False questions
+    # ---------------------------------------------------------
+    question_lower = question.lower()
+    print("\n===== TRUE/FALSE DEBUG =====")
+    print("QUESTION:", repr(question))
+    print("STUDENT ANSWER:", repr(student_answer))
+    print("EXPECTED ANSWER:", repr(expected_answer))
+    print("============================\n")
+    is_true_false = (
+        "true or false" in question_lower
+        or "is this statement true" in question_lower
+        or "is this statement false" in question_lower
+    )
 
+    if is_true_false:
+        student_value = student_answer.strip().lower()
+        expected_value = expected_answer.strip().lower()
+
+        if student_value in {"true", "false"} and expected_value in {
+            "true",
+            "false",
+        }:
+            if student_value == expected_value:
+                return {
+                    "score": 1.0,
+                    "result": "correct",
+                    "feedback": "The answer is correct.",
+                    "misconception": None,
+                }
+
+            return {
+                "score": 0.3,
+                "result": "incorrect",
+                "feedback": (
+                    f"The correct answer is {expected_value}."
+                ),
+                "misconception": (
+                    f"The student selected {student_value}, "
+                    f"but the expected answer is {expected_value}."
+                ),
+            }
     criteria = evaluation_criteria or []
 
     criteria_text = "\n".join(
@@ -98,23 +142,25 @@ def evaluate_answer(
     if not criteria_text:
         criteria_text = (
             "No separate evaluation criteria are available. "
-            "Evaluate the expected answer directly."
+            "Use the expected answer as the reference."
         )
 
     prompt = f"""
-You are a semantic evaluator for a general-purpose adaptive AI tutor.
+You are a semantic claim analyzer for a general-purpose adaptive AI tutor.
 
-Your task is to evaluate a student's ACTUAL conceptual understanding.
+Your job is NOT to decide the final score or final result.
 
-You must evaluate the student's answer using only:
+Your ONLY job is to identify the meaningful claims made by the student
+and compare those claims with the EXPECTED ANSWER.
+
+Use only:
 
 1. The question
 2. The expected answer
 3. The evaluation criteria
 4. The student's answer
 
-Do not assume a specific subject, domain, curriculum, or educational
-framework beyond the information provided.
+Do not assume a specific subject or domain.
 
 ============================================================
 QUESTION
@@ -141,294 +187,214 @@ STUDENT ANSWER
 {student_answer}
 
 ============================================================
-GENERAL EVALUATION PRINCIPLES
+CLAIM ANALYSIS
 ============================================================
 
-1. Evaluate semantic meaning, not exact wording.
+Extract the important conceptual claims made by the student.
 
-2. Accept answers that express the same understanding using different
-   words, sentence structures, terminology, or level of detail.
+For every meaningful claim, classify it as exactly one of:
 
-3. Do not require the student to reproduce the expected answer
-   word-for-word.
+"supported"
+    The claim is consistent with the expected answer.
 
-4. Do not penalize minor wording differences when the underlying
-   concept is correct.
+"contradicts_expected"
+    The claim expresses a belief that conflicts with the expected answer.
 
-5. Do not require information that is not necessary to answer the
-   question or satisfy the evaluation criteria.
+"unrelated"
+    The claim does not help answer the question.
 
-6. Evaluate the student's actual answer rather than what the student
-   might have intended to say.
+IMPORTANT:
 
-7. Do not introduce outside knowledge when deciding whether the
-   answer satisfies the provided criteria.
+If the student says something that reverses, changes, or contradicts
+a central relationship, definition, property, process, cause, effect,
+or other important idea in the expected answer, classify that claim
+as "contradicts_expected".
 
-============================================================
-CORRECT
-============================================================
+Do not reinterpret an incorrect claim as merely missing information.
 
-Use "correct" when the student demonstrates the core understanding
-required by the question.
+For example:
 
-The student may use different wording from the expected answer.
+Expected:
+"A is an executing version of B."
 
-The student does not need to mention every minor detail.
+Student:
+"A is a stored version of B."
 
-============================================================
-PARTIALLY CORRECT
-============================================================
+The student's claim contradicts the expected answer.
 
-Use "partially_correct" when the student demonstrates meaningful
-understanding of some, but not all, important requirements of the
-question.
+Another example:
 
-Typical cases include:
+Expected:
+"X increases Y."
 
-- One important aspect is missing.
-- The student explains only part of a multi-part answer.
-- The student demonstrates the central idea but lacks an important
-  supporting aspect.
+Student:
+"X decreases Y."
 
-Missing information is NOT automatically a misconception.
+The student's claim contradicts the expected answer.
 
-============================================================
-INCORRECT
-============================================================
+Missing information is different.
 
-Use "incorrect" when:
-
-- The answer does not demonstrate the required understanding, or
-- The answer contains a clear conceptual claim that conflicts with
-  the expected answer or evaluation criteria.
-
-A clearly incorrect conceptual claim should be classified as
-"incorrect" even if the answer contains some vague or generally
-relevant statements.
+If the student's answer is consistent with the expected answer but
+does not mention an important requirement, do NOT create a
+contradictory claim. Simply omit that claim from the student's
+claims.
 
 ============================================================
-MISCONCEPTION DETECTION
+OUTPUT
 ============================================================
 
-A misconception is a specific false conceptual belief expressed
-or clearly implied by the student's answer.
+Return ONLY valid JSON.
 
-Only report a misconception when there is actual evidence of an
-incorrect belief in the student's answer.
-
-Do NOT infer a misconception from:
-
-- omission
-- incomplete explanation
-- short answers
-- missing details
-- failure to satisfy one criterion
-- lack of examples
-- lack of terminology
-
-If the student simply fails to mention an important concept,
-classify the answer as partially_correct when appropriate and set
-misconception to null.
-
-If the student explicitly states or clearly implies a belief that
-contradicts the expected answer or evaluation criteria, classify the
-answer as incorrect and describe that false belief.
-
-The misconception must be based on the student's actual words.
-
-Never invent a misconception.
-
-============================================================
-SCORE GUIDANCE
-============================================================
-
-Use a score between 0.0 and 1.0.
-
-Use the following general interpretation:
-
-1.0:
-The required understanding is demonstrated.
-
-Around 0.5:
-Meaningful understanding is demonstrated, but one or more important
-requirements are missing.
-
-Around 0.0:
-The required understanding is not demonstrated or the answer contains
-a fundamental conceptual error.
-
-The exact score may be adjusted based on how much of the required
-understanding is demonstrated.
-
-============================================================
-FEEDBACK
-============================================================
-
-For a correct answer:
-Briefly explain what the student demonstrated correctly.
-
-For a partially correct answer:
-State what the student understood and what important requirement was
-not demonstrated.
-
-For an incorrect answer:
-Briefly explain the conceptual problem.
-
-If a misconception is detected, explain the incorrect belief clearly
-and concisely.
-
-Do not introduce unrelated information.
-
-============================================================
-OUTPUT FORMAT
-============================================================
-
-Return ONLY one valid JSON object.
-
-The JSON must contain exactly these fields:
+Use exactly this structure:
 
 {{
-  "score": 0.0,
-  "result": "correct",
-  "feedback": "Brief explanation.",
-  "misconception": null
+  "claims": [
+    {{
+      "claim": "student's conceptual claim",
+      "assessment": "supported"
+    }}
+  ]
 }}
 
-Allowed result values:
+Allowed assessment values:
 
-"correct"
-"partially_correct"
-"incorrect"
+"supported"
+"contradicts_expected"
+"unrelated"
 
-The misconception field must be either:
-
-null
-
-or
-
-"a concise description of the specific false conceptual belief
-expressed by the student."
-
-Do not include markdown.
-
-Do not include code fences.
-
-Do not include explanations outside the JSON.
+Do not include score.
+Do not include result.
+Do not include feedback.
+Do not include misconception.
 
 Return ONLY the JSON object.
 """
 
     response = generate_response(prompt).strip()
 
-    evaluation = _extract_json_object(response)
+    print("\n===== RAW LLM CLAIM ANALYSIS =====")
+    print(response)
+    print("==================================\n")
+    print("\n===== STUDENT ANSWER =====")
+    print(student_answer)
 
-    # ---------------------------------------------------------
-    # Validate score
-    # ---------------------------------------------------------
+    print("\n===== EXPECTED ANSWER =====")
+    print(expected_answer)
 
-    try:
-        score = float(evaluation["score"])
+    print("\n===== RAW LLM CLAIM ANALYSIS =====")
+    print(response)
+    print("==================================\n")
 
-    except (
-        KeyError,
-        TypeError,
-        ValueError,
-    ) as error:
+    analysis = _extract_json_object(response)
 
-        raise ValueError(
-            "LLM returned an invalid score."
-        ) from error
+    print("\n===== EVALUATION CLAIMS =====")
+    print(json.dumps(analysis, indent=2))
+    print("=============================\n")
 
-    if not 0.0 <= score <= 1.0:
-        raise ValueError(
-            "LLM returned an invalid score."
-        )
+    claims = analysis.get("claims", [])
 
-    # ---------------------------------------------------------
-    # Validate result
-    # ---------------------------------------------------------
+    if not isinstance(claims, list):
+        claims = []
 
-    result = evaluation.get("result")
+    normalized_claims = []
 
-    allowed_results = {
-        "correct",
-        "partially_correct",
-        "incorrect",
-    }
+    for claim_data in claims:
 
-    if result not in allowed_results:
-        raise ValueError(
-            "LLM returned an invalid result."
-        )
+        if not isinstance(claim_data, dict):
+            continue
 
-    # ---------------------------------------------------------
-    # Normalize misconception
-    # ---------------------------------------------------------
-
-    misconception = evaluation.get(
-        "misconception"
-    )
-
-    if misconception is not None:
-
-        misconception = str(
-            misconception
+        claim = str(
+            claim_data.get("claim", "")
         ).strip()
 
-        if misconception.lower() in PLACEHOLDER_MISCONCEPTIONS:
-            misconception = None
+        assessment = str(
+            claim_data.get("assessment", "")
+        ).strip().lower()
+
+        if not claim:
+            continue
+
+        if assessment not in {
+            "supported",
+            "contradicts_expected",
+            "unrelated",
+        }:
+            continue
+
+        normalized_claims.append(
+            {
+                "claim": claim,
+                "assessment": assessment,
+            }
+        )
+
+    contradictory_claims = [
+        item
+        for item in normalized_claims
+        if item["assessment"] == "contradicts_expected"
+    ]
+
+    supported_claims = [
+        item
+        for item in normalized_claims
+        if item["assessment"] == "supported"
+    ]
+
+    meaningful_claims = [
+        item
+        for item in normalized_claims
+        if item["assessment"] != "unrelated"
+    ]
 
     # ---------------------------------------------------------
-    # Correct answers cannot contain misconceptions.
+    # 1. Conceptual contradiction takes priority
     # ---------------------------------------------------------
 
-    if result == "correct":
+    if contradictory_claims:
 
-        score = 1.0
-        misconception = None
+        misconception = contradictory_claims[0]["claim"]
 
-    # ---------------------------------------------------------
-    # Protect against LLM confusing omission with misconception.
-    # ---------------------------------------------------------
+        feedback = (
+            "The answer contains a conceptual error: "
+            f"{misconception}"
+        )
 
-    if misconception:
-
-        misconception_lower = misconception.lower()
-
-        omission_phrases = [
-            "did not mention",
-            "does not mention",
-            "failed to mention",
-            "without mentioning",
-            "missing information",
-            "missing detail",
-            "omitted information",
-            "omitted detail",
-            "not mention",
-            "has not demonstrated",
-            "not demonstrated",
-            "does not address",
-            "did not address",
-            "fails to address",
-        ]
-
-        if any(
-            phrase in misconception_lower
-            for phrase in omission_phrases
-        ):
-
-            misconception = None
-
-            if result == "incorrect":
-                result = "partially_correct"
-                score = max(0.5, score)
+        return {
+            "score": 0.3,
+            "result": "incorrect",
+            "feedback": feedback,
+            "misconception": (
+                "The student expressed the following incorrect "
+                f"belief: {misconception}"
+            ),
+        }
 
     # ---------------------------------------------------------
-    # Final normalized result
+    # 2. No contradiction + no meaningful understanding
     # ---------------------------------------------------------
 
-    evaluation["score"] = score
-    evaluation["result"] = result
-    evaluation["misconception"] = misconception
+    if not meaningful_claims:
 
-    return evaluation
+        return {
+            "score": 0.0,
+            "result": "incorrect",
+            "feedback": (
+                "The answer does not demonstrate the required "
+                "understanding."
+            ),
+            "misconception": None,
+        }
+
+    # ---------------------------------------------------------
+    # 3. Supported claims only
+    # ---------------------------------------------------------
+
+    if supported_claims:
+        return {
+            "score": 1.0,
+            "result": "correct",
+            "feedback": (
+                "The answer demonstrates the required understanding."
+            ),
+            "misconception": None,
+    }
