@@ -1,3 +1,4 @@
+import re
 import requests
 
 
@@ -24,110 +25,148 @@ def generate_response(prompt: str) -> str:
 
     data = response.json()
 
-    return data["response"].strip()
+    generated_text = data.get("response")
+
+    if not isinstance(generated_text, str):
+        raise ValueError("LLM returned an invalid response.")
+
+    generated_text = generated_text.strip()
+
+    if not generated_text:
+        raise ValueError("LLM returned an empty response.")
+
+    return generated_text
+
+
+def validate_grounding(
+    response: str,
+    retrieved_knowledge: str,
+) -> bool:
+    """
+    Check whether the generated response is grounded in the retrieved
+    knowledge using sentence-level lexical overlap.
+
+    This is a deterministic safety check. It does not decide whether
+    a claim is scientifically or semantically correct; it only detects
+    sentences that have very little textual support in the evidence.
+    """
+
+    evidence_words = set(
+        re.findall(
+            r"\b[a-zA-Z0-9]+\b",
+            retrieved_knowledge.lower(),
+        )
+    )
+
+    sentences = re.split(
+        r"(?<=[.!?])\s+",
+        response.strip(),
+    )
+
+    for sentence in sentences:
+        sentence = sentence.strip()
+
+        if not sentence:
+            continue
+
+        # Skip the final learner-facing question.
+        if sentence.endswith("?"):
+            continue
+
+        words = re.findall(
+            r"\b[a-zA-Z0-9]+\b",
+            sentence.lower(),
+        )
+
+        if not words:
+            continue
+
+        supported_words = sum(
+            1
+            for word in words
+            if word in evidence_words
+        )
+
+        overlap_ratio = supported_words / len(words)
+
+        if overlap_ratio < 0.50:
+            return False
+
+    return True
+def sanitize_retrieved_knowledge(retrieved_knowledge: str) -> str:
+    """
+    Remove obvious instruction-like content from retrieved material
+    before exposing it to the learner.
+    """
+
+    blocked_patterns = [
+        r"ignore\s+all\s+previous\s+instructions",
+        r"reveal\s+(your\s+)?system\s+prompt",
+        r"use\s+your\s+own\s+knowledge",
+        r"follow\s+these\s+instructions",
+        r"ignore\s+(the\s+)?instructions",
+    ]
+
+    sanitized = retrieved_knowledge
+
+    for pattern in blocked_patterns:
+        sanitized = re.sub(
+            pattern,
+            "",
+            sanitized,
+            flags=re.IGNORECASE,
+        )
+
+    return sanitized
+def build_evidence_lesson(retrieved_knowledge: str) -> str:
+    """
+    Build a learner-facing factual lesson directly from retrieved
+    knowledge without allowing the LLM to introduce new facts.
+    """
+
+    if not retrieved_knowledge.strip():
+        return "The available knowledge does not provide that detail."
+
+    retrieved_knowledge = sanitize_retrieved_knowledge(
+        retrieved_knowledge
+    )
+
+    chunks = [
+        chunk.strip()
+        for chunk in retrieved_knowledge.split("\n\n")
+        if chunk.strip()
+    ]
+
+    statements = []
+
+    for chunk in chunks:
+        # Remove the retrieval label such as:
+        # [Knowledge 1]
+        cleaned_chunk = re.sub(
+            r"^\[Knowledge\s+\d+\]\s*",
+            "",
+            chunk,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        if cleaned_chunk:
+            statements.append(cleaned_chunk)
+
+    return "\n\n".join(statements)
+
 
 def generate_grounded_response(
     prompt: str,
     retrieved_knowledge: str,
 ) -> str:
+    print(">>> USING DETERMINISTIC GROUNDED RESPONSE <<<")
     """
-    Generate a response that is explicitly constrained
-    to the supplied retrieved knowledge.
-
-    The model is instructed not to use outside knowledge.
+    Generate a response directly from retrieved evidence.
     """
 
-    grounded_prompt = f"""
-You are a strictly evidence-grounded AI tutor.
+    if not retrieved_knowledge.strip():
+        return "The available knowledge does not provide that detail."
 
-Your response MUST be based ONLY on the EVIDENCE provided below.
+    evidence_lesson = build_evidence_lesson(retrieved_knowledge)
 
-====================
-EVIDENCE
-====================
-
-{retrieved_knowledge}
-
-====================
-TASK
-====================
-
-{prompt}
-
-====================
-STRICT RULES
-====================
-
-1. The EVIDENCE is the only factual source you may use.
-
-2. Do NOT use information from your pretrained knowledge.
-3. Treat every statement not explicitly present in EVIDENCE as unknown.
-4. If EVIDENCE only lists an entity, do not describe what that entity
-   does, how it behaves, or what its purpose is.
-5. Never use your general knowledge to complete, interpret, or expand
-   incomplete information from EVIDENCE.
-
-6. Do NOT infer additional technical facts from a term merely
-   because you recognize the term.
-
-7. If the evidence says that something is an example, you may
-   say that it is an example.
-
-8. If the evidence does NOT explain what an example does,
-   do NOT explain what it does.
-
-9. Do NOT expand abbreviations unless the expansion appears
-   explicitly in the evidence.
-
-10. Do NOT invent real-world examples involving technical
-   behavior that is not present in the evidence.
-
-11. If a requested detail is not present in the evidence, say:
-   "The available knowledge does not provide that detail."
-
-12. Every factual statement in the final answer must be
-    directly supported by the evidence.
-
-13. Stay focused on the requested concept.
-
-14. End with ONE short understanding-check question.
-
-    The question must be answerable using only information explicitly
-    stated in the EVIDENCE.
-
-    Ask only about facts, names, classifications, relationships, or
-    examples that are explicitly stated in the EVIDENCE.
-
-    Do not ask about the purpose, function, role, behavior, effect,
-    benefit, or use of something unless that information is explicitly
-    stated in the EVIDENCE.
-
-15.When defining or explaining the concept, name the concept explicitly. Never address the learner as if they are the concept.
-Do not begin a definition with "You are" unless the evidence explicitly describes the learner.
-
-Do not add advice, predictions, encouragement, future benefits,
-or statements about why learning the concept is useful unless
-those claims are explicitly supported by the EVIDENCE.
-
-Before returning the answer, silently check every factual
-statement against the EVIDENCE. Remove any statement that
-cannot be directly supported.
-
-Return only the teaching explanation and the final question.
-Do NOT mention the evidence, retrieved knowledge, grounding rules,
-instructions, prompt, task, or your reasoning.
-
-Do NOT say phrases such as:
-"Given the evidence..."
-"Based on the rules..."
-"According to the retrieved knowledge..."
-"The prompt says..."
-"The rules provided..."
-
-Write directly to the learner as a tutor.
-
-Return ONLY the learner-facing explanation followed by ONE short
-understanding-check question.
-"""
-
-    return generate_response(grounded_prompt)
+    return evidence_lesson

@@ -211,23 +211,25 @@ TEACHING RULES
 13. Do not expand abbreviations unless the expansion appears in
     the RETRIEVED KNOWLEDGE.
 
+14. A term being mentioned in the RETRIEVED KNOWLEDGE does NOT
+    mean that its properties, purpose, function, behavior, or use
+    are known.
+
+    Only reproduce a fact about a term if that exact fact is
+    explicitly stated in the RETRIEVED KNOWLEDGE.
+
+    For example, if the knowledge says:
+    "TCP is an example of a network protocol."
+
+    you may state:
+    "TCP is an example of a network protocol."
+
+    You may NOT state:
+    "TCP transfers data over the internet."
+
+    unless the retrieved knowledge explicitly states that.
+
 14. Keep the lesson appropriate for the student's level.
-
-15. End with ONE short question that asks only for a fact explicitly
-  stated in the retrieved knowledge.
-16. Prefer questions that ask the learner to identify, name, or recall
-  information directly stated in the retrieved knowledge.
-17. Do not transform a stated fact into a question about purpose,
-  function, role, behavior, or effect unless that relationship is
-  explicitly stated in the retrieved knowledge.
-
-
-OUTPUT RULES
-------------
-
-16. Return ONLY the learner-facing lesson.
-
-17. Do NOT output or repeat any part of this prompt.
 
 18. Do NOT output labels such as:
     "Concept Description:"
@@ -241,7 +243,48 @@ OUTPUT RULES
     knowledge, prompt, or teaching rules.
 
 20. Do NOT reproduce the RETRIEVED KNOWLEDGE verbatim unless
-    necessary. Present it as a natural explanation for the student.
+    necessary. Present it as a natural explanation for the student.15. End with exactly ONE short understanding-check question.
+
+16. The answer to the question MUST appear explicitly in the
+    RETRIEVED KNOWLEDGE.
+
+17. Before creating the question, identify a specific sentence or
+    statement in the RETRIEVED KNOWLEDGE that directly contains
+    its answer.
+
+18. Ask only about information directly stated in that sentence
+    or statement.
+
+19. If the retrieved knowledge says that something is an example,
+    you may ask the learner to identify that it is an example.
+
+20. Do NOT ask what an example does, how it works, why it is used,
+    its purpose, function, role, behavior, effect, benefit, or
+    properties unless that information is explicitly stated.
+
+21. Do NOT ask about TCP, UDP, HTTP, HTTPS, IP, or any other listed
+    entity merely because its name appears in the retrieved
+    knowledge. Its name appearing alone is NOT evidence about
+    what it does.
+
+22. For example, if the retrieved knowledge says:
+    "HTTP, HTTPS, TCP, UDP, and IP are examples of network
+    protocols."
+    an allowed question is:
+    "Which of the following is an example of a network protocol?"
+    A question such as:
+    "What is the primary function of TCP?"
+    is NOT allowed unless the function of TCP is explicitly stated.
+
+23. If no suitable directly supported fact exists for a question,
+    ask a question about another fact that is explicitly stated.
+
+OUTPUT RULES
+------------
+
+24. Return ONLY the learner-facing lesson.
+
+25. Do NOT output or repeat any part of this prompt.
 
 21. Do NOT include headings that describe the internal structure
     of the prompt.
@@ -264,7 +307,12 @@ Do not explain your grounding process.
 Return only the lesson and one final understanding-check question.
 """
 
-    explanation = generate_response(prompt)
+    explanation = generate_grounded_response(
+        prompt=prompt,
+        retrieved_knowledge=knowledge_text,
+    )
+
+    
 
     return LessonResponse(
     concept=context["concept"],
