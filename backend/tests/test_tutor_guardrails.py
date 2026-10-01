@@ -116,3 +116,33 @@ def test_grounded_response_falls_back_when_llm_output_is_unsupported(
     )
 
     assert "guarantees reliable delivery" not in response
+
+def test_grounding_validator_accepts_supported_paraphrase():
+    from app.tutor.tutor_service import validate_grounding
+
+    evidence = (
+        "Network protocols are rules that define how devices communicate "
+        "over a network."
+    )
+
+    response = (
+        "Network protocols establish rules for communication between "
+        "devices."
+    )
+
+    assert validate_grounding(response, evidence) is True
+
+
+def test_grounding_validator_rejects_unsupported_claim_with_overlap():
+    from app.tutor.tutor_service import validate_grounding
+
+    evidence = (
+        "HTTP, HTTPS, TCP, UDP, and IP are examples of network protocols."
+    )
+
+    response = (
+        "HTTP, HTTPS, TCP, UDP, and IP are protocols that guarantee "
+        "reliable and secure communication."
+    )
+
+    assert validate_grounding(response, evidence) is False

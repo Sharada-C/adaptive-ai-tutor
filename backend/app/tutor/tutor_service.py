@@ -43,12 +43,16 @@ def validate_grounding(
     retrieved_knowledge: str,
 ) -> bool:
     """
-    Check whether the generated response is grounded in the retrieved
-    knowledge using sentence-level lexical overlap.
+    Check whether each factual sentence in the response is grounded
+    in the retrieved knowledge.
 
-    This is a deterministic safety check. It does not decide whether
-    a claim is scientifically or semantically correct; it only detects
-    sentences that have very little textual support in the evidence.
+    This deterministic check combines:
+    1. lexical overlap, and
+    2. detection of factual predicates that are not supported by
+       the evidence.
+
+    It is intentionally conservative: when support is unclear,
+    the response is rejected and the evidence-only fallback is used.
     """
 
     evidence_words = set(
@@ -63,13 +67,55 @@ def validate_grounding(
         response.strip(),
     )
 
+    normalized_sentences = [
+        re.sub(r"\s+", " ", sentence.strip().lower())
+        for sentence in sentences
+        if sentence.strip()
+    ]
+
+    if len(normalized_sentences) != len(set(normalized_sentences)):
+        return False
+
+    # Words that commonly introduce factual properties, behaviors,
+    # guarantees, relationships, or capabilities.
+    predicate_markers = {
+        "guarantees",
+        "guarantee",
+        "ensures",
+        "ensure",
+        "provides",
+        "provide",
+        "allows",
+        "allow",
+        "prevents",
+        "prevent",
+        "protects",
+        "protect",
+        "supports",
+        "support",
+        "enables",
+        "enable",
+        "uses",
+        "use",
+        "transfers",
+        "transfer",
+        "encrypts",
+        "encrypt",
+        "secures",
+        "secure",
+        "improves",
+        "improve",
+        "reduces",
+        "reduce",
+    }
+
     for sentence in sentences:
         sentence = sentence.strip()
 
         if not sentence:
             continue
 
-        # Skip the final learner-facing question.
+        # Questions are learner-facing prompts rather than factual claims.
         if sentence.endswith("?"):
             continue
 
@@ -91,6 +137,32 @@ def validate_grounding(
 
         if overlap_ratio < 0.50:
             return False
+
+        # If the response introduces a factual predicate that does not
+        # appear anywhere in the evidence, reject it.
+        response_predicates = {
+            word
+            for word in words
+            if word in predicate_markers
+        }
+
+        evidence_predicates = {
+            word
+            for word in re.findall(
+                r"\b[a-zA-Z0-9]+\b",
+                retrieved_knowledge.lower(),
+            )
+            if word in predicate_markers
+        }
+
+        unsupported_predicates = (
+            response_predicates - evidence_predicates
+        )
+
+        if unsupported_predicates:
+            return False
+
+    return True
 
     return True
 def sanitize_retrieved_knowledge(retrieved_knowledge: str) -> str:
@@ -180,6 +252,7 @@ def generate_grounded_response(
     )
 
     llm_response = generate_response(prompt)
+
 
     if validate_grounding(
         llm_response,
