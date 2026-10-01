@@ -84,3 +84,35 @@ def test_build_evidence_lesson_uses_only_retrieved_knowledge():
 
     assert "TCP ensures reliable data transfer" not in result
     assert "Transmission Control Protocol" not in result
+
+def test_grounded_response_falls_back_when_llm_output_is_unsupported(
+    monkeypatch,
+):
+    from app.tutor import tutor_service
+
+    evidence = (
+        "HTTP, HTTPS, TCP, UDP, and IP are examples of network protocols."
+    )
+
+    def fake_generate_response(prompt):
+        return (
+            "TCP is an example of a network protocol. "
+            "TCP guarantees reliable delivery of data."
+        )
+
+    monkeypatch.setattr(
+        tutor_service,
+        "generate_response",
+        fake_generate_response,
+    )
+
+    response = tutor_service.generate_grounded_response(
+        prompt="Explain the concept.",
+        retrieved_knowledge=evidence,
+    )
+
+    assert response == (
+        "HTTP, HTTPS, TCP, UDP, and IP are examples of network protocols."
+    )
+
+    assert "guarantees reliable delivery" not in response

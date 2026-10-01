@@ -159,14 +159,32 @@ def generate_grounded_response(
     prompt: str,
     retrieved_knowledge: str,
 ) -> str:
-    print(">>> USING DETERMINISTIC GROUNDED RESPONSE <<<")
     """
-    Generate a response directly from retrieved evidence.
+    Generate a natural tutor response using the LLM, but only accept it
+    when every factual sentence has sufficient lexical support from the
+    retrieved evidence.
+
+    If the LLM output fails the grounding check, return the deterministic
+    evidence-only fallback.
     """
 
     if not retrieved_knowledge.strip():
         return "The available knowledge does not provide that detail."
 
-    evidence_lesson = build_evidence_lesson(retrieved_knowledge)
+    sanitized_knowledge = sanitize_retrieved_knowledge(
+        retrieved_knowledge
+    )
+
+    evidence_lesson = build_evidence_lesson(
+        sanitized_knowledge
+    )
+
+    llm_response = generate_response(prompt)
+
+    if validate_grounding(
+        llm_response,
+        sanitized_knowledge,
+    ):
+        return llm_response
 
     return evidence_lesson
