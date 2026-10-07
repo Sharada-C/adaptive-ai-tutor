@@ -9,7 +9,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
     import.meta.url
   ).toString();
 
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = "http://127.0.0.1:8001";
 const STUDENT_ID = 1;
 
 // ============================================================
@@ -717,138 +717,155 @@ useEffect(() => {
   // GET NEXT CONCEPT + GENERATE LESSON
   // ============================================================
 
-  const handleContinueLearning =
-    async () => {
-      if (!subjectId) {
-        alert(
-          "Subject information is missing."
-        );
+  const handleContinueLearning = async () => {
+  if (!subjectId) {
+    alert("Subject information is missing.");
+    return;
+  }
 
+  try {
+    setLoadingLesson(true);
+
+    while (true) {
+      // ------------------------------------------------------
+      // STEP 1: Ask adaptive planner
+      // ------------------------------------------------------
+
+      const plannerResponse = await fetch(
+        `${API_BASE_URL}/students/${STUDENT_ID}/subjects/${Number(
+          subjectId
+        )}/next`
+      );
+
+      const plannerData = await plannerResponse.json();
+
+      if (!plannerResponse.ok) {
+        throw new Error(
+          plannerData.detail ||
+            "Unable to determine the next concept."
+        );
+      }
+
+      console.log("Planner response:", plannerData);
+
+      // ------------------------------------------------------
+      // STEP 2: No concepts remaining
+      // ------------------------------------------------------
+
+      if (
+        plannerData.status === "complete" ||
+        !plannerData.concept
+      ) {
+        setNextConcept(null);
+        setLesson(null);
+        setScreen("lesson");
         return;
       }
 
-      try {
-        setLoadingLesson(true);
+      // ------------------------------------------------------
+      // STEP 3: Store selected concept
+      // ------------------------------------------------------
 
+      const concept = plannerData.concept;
 
-        // ------------------------------------------------------
-        // STEP 1: Ask adaptive planner
-        // ------------------------------------------------------
+      console.log(
+        "Adaptive concept selected:",
+        concept
+      );
 
-        const plannerResponse =
-          await fetch(
-            `${API_BASE_URL}/students/${STUDENT_ID}/subjects/${Number(
-              subjectId
-            )}/next`
-          );
+      setNextConcept(concept);
 
-        const plannerData =
-          await plannerResponse.json();
+      // ------------------------------------------------------
+      // STEP 4: Determine adaptive action
+      // ------------------------------------------------------
 
-        if (!plannerResponse.ok) {
-          throw new Error(
-            plannerData.detail ||
-              "Unable to determine the next concept."
-          );
-        }
+      const actionResponse = await fetch(
+        `${API_BASE_URL}/tutor/next/${STUDENT_ID}/${concept.id}`
+      );
 
-        console.log(
-          "Planner response:",
-          plannerData
+      const actionData = await actionResponse.json();
+
+      if (!actionResponse.ok) {
+        throw new Error(
+          actionData.detail ||
+            "Unable to determine the adaptive action."
         );
-
-        // ------------------------------------------------------
-        // STEP 2: No concepts remaining
-        // ------------------------------------------------------
-
-        if (
-          plannerData.status ===
-            "complete" ||
-          !plannerData.concept
-        ) {
-          setNextConcept(null);
-
-          setLesson(null);
-
-          setScreen("lesson");
-
-          return;
-        }
-
-        // ------------------------------------------------------
-        // STEP 3: Store selected concept
-        // ------------------------------------------------------
-
-        const concept =
-          plannerData.concept;
-
-        console.log(
-          "Adaptive concept selected:",
-          concept
-        );
-
-        setNextConcept(
-          concept
-        );
-
-        // ------------------------------------------------------
-        // STEP 4: Generate lesson
-        // ------------------------------------------------------
-
-        const lessonResponse =
-          await fetch(
-            `${API_BASE_URL}/tutor/lesson`,
-            {
-              method: "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body: JSON.stringify({
-                student_id:
-                  STUDENT_ID,
-
-                concept_id:
-                  concept.id,
-              }),
-            }
-          );
-
-        const lessonData =
-          await lessonResponse.json();
-
-        if (!lessonResponse.ok) {
-          throw new Error(
-            lessonData.detail ||
-              "Unable to generate the lesson."
-          );
-        }
-
-        console.log(
-          "Lesson generated:",
-          lessonData
-        );
-
-        setLesson(
-          lessonData
-        );
-
-        // ------------------------------------------------------
-        // STEP 5: Explicitly navigate to lesson
-        // ------------------------------------------------------
-
-        setScreen("lesson");
-      } catch (error) {
-        console.error(error);
-
-        alert(error.message);
-      } finally {
-        setLoadingLesson(false);
       }
-    };
 
+      console.log(
+        "Adaptive action:",
+        actionData
+      );
+
+      // ------------------------------------------------------
+      // STEP 5: Follow the adaptive decision
+      // ------------------------------------------------------
+
+      if (actionData.action === "reteach") {
+        await handleStartReteach();
+        return;
+      }
+
+      if (actionData.action === "practice") {
+        await handleStartQuiz();
+        return;
+      }
+
+      if (actionData.action === "advance") {
+        setNextConcept(null);
+        setLesson(null);
+
+        console.log(
+          "Concept already mastered. Asking planner for next concept."
+        );
+
+        continue;
+      }
+
+      // ------------------------------------------------------
+      // STEP 6: Normal learning flow
+      // ------------------------------------------------------
+
+      const lessonResponse = await fetch(
+        `${API_BASE_URL}/tutor/lesson`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            student_id: STUDENT_ID,
+            concept_id: concept.id,
+          }),
+        }
+      );
+
+      const lessonData = await lessonResponse.json();
+
+      if (!lessonResponse.ok) {
+        throw new Error(
+          lessonData.detail ||
+            "Unable to generate the lesson."
+        );
+      }
+
+      console.log(
+        "Lesson generated:",
+        lessonData
+      );
+
+      setLesson(lessonData);
+      setScreen("lesson");
+
+      return;
+    }
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+  } finally {
+    setLoadingLesson(false);
+  }
+};
 
 
   const handleStartReteach = async () => {
@@ -856,6 +873,7 @@ useEffect(() => {
 
     if (!nextConcept) {
       alert("No active concept is available for reteaching.");
+      return;
     }
 
     
@@ -952,6 +970,12 @@ const loadProgress = async () => {
     setLoadingProgress(false);
   }
 };
+
+useEffect(() => {
+  if (screen === "progress" && subjectId) {
+    loadProgress();
+  }
+}, [screen, subjectId]);
  
 const loadStudentProfile = async () => {
   try {
@@ -1028,6 +1052,8 @@ const loadStudentProfile = async () => {
           "Quiz generated:",
           data
         );
+
+        
 
         setQuiz(data);
 

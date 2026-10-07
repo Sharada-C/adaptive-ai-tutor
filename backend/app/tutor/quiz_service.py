@@ -114,12 +114,21 @@ Required format:
   "difficulty": "{expected_difficulty}"
 }}
 
+
+
 Return JSON only.
+
+IMPORTANT:
+Return the complete JSON object.
+The response MUST end with the character }}.
+Do not stop before closing the JSON object.
+Do not use markdown fences.
+Return nothing except the JSON object.
 """
 
     response = generate_response(prompt).strip()
 
-    # Remove accidental markdown code fences.
+# Remove accidental markdown code fences.
     if response.startswith("```"):
         response = response.replace("```json", "")
         response = response.replace("```", "")
@@ -127,10 +136,49 @@ Return JSON only.
 
     try:
         result = json.loads(response)
-    except json.JSONDecodeError as error:
-        raise ValueError(
-            "LLM returned invalid JSON for quiz generation."
-        ) from error
+
+    except json.JSONDecodeError:
+    # llama3.2:3b can occasionally stop immediately
+    # before emitting the final closing brace.
+        repaired_response = response.strip()
+
+        if (
+            repaired_response.startswith("{")
+            and not repaired_response.endswith("}")
+        ):
+            repaired_response += "}"
+
+        try:
+            result = json.loads(repaired_response)
+
+        except json.JSONDecodeError:
+            print("INVALID QUIZ JSON:")
+            print(repr(response))
+
+        # Try extracting a valid JSON object from the response.
+            decoder = json.JSONDecoder()
+            result = None
+            start = response.find("{")
+
+            while start != -1:
+                try:
+                    candidate, _ = decoder.raw_decode(
+                        response[start:]
+                    )
+
+                    if isinstance(candidate, dict):
+                        result = candidate
+                        break
+
+                except json.JSONDecodeError:
+                    pass
+
+                start = response.find("{", start + 1)
+
+            if not isinstance(result, dict):
+                raise ValueError(
+                    "LLM returned invalid JSON for quiz generation."
+                )
 
     # Validate required fields.
     required_fields = {
