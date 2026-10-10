@@ -1,3 +1,4 @@
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.knowledge import KnowledgeChunk
@@ -12,6 +13,7 @@ def retrieve_relevant_chunks(
     db: Session,
     query: str,
     concept_id: int | None = None,
+    subject_id: int | None = None,
     limit: int = DEFAULT_LIMIT,
     similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
 ) -> list[KnowledgeChunk]:
@@ -47,9 +49,20 @@ def retrieve_relevant_chunks(
         similarity.label("similarity"),
     )
 
-    if concept_id is not None:
+    if concept_id is not None and subject_id is not None:
+        db_query = db_query.filter(
+            or_(
+                KnowledgeChunk.concept_id == concept_id,
+                KnowledgeChunk.subject_id == subject_id,
+            )
+        )
+    elif concept_id is not None:
         db_query = db_query.filter(
             KnowledgeChunk.concept_id == concept_id
+        )
+    elif subject_id is not None:
+        db_query = db_query.filter(
+            KnowledgeChunk.subject_id == subject_id
         )
 
     results = (
@@ -70,6 +83,7 @@ def retrieve_relevant_chunks_with_scores(
     db: Session,
     query: str,
     concept_id: int | None = None,
+    subject_id: int | None = None,
     limit: int = DEFAULT_LIMIT,
     similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
 ) -> list[dict]:
@@ -103,9 +117,20 @@ def retrieve_relevant_chunks_with_scores(
         similarity.label("similarity"),
     )
 
-    if concept_id is not None:
+    if concept_id is not None and subject_id is not None:
+        db_query = db_query.filter(
+            or_(
+                KnowledgeChunk.concept_id == concept_id,
+                KnowledgeChunk.subject_id == subject_id,
+            )
+        )
+    elif concept_id is not None:
         db_query = db_query.filter(
             KnowledgeChunk.concept_id == concept_id
+        )
+    elif subject_id is not None:
+        db_query = db_query.filter(
+            KnowledgeChunk.subject_id == subject_id
         )
 
     results = (

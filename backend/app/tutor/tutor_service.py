@@ -164,7 +164,7 @@ def validate_grounding(
 
     return True
 
-    return True
+    
 def sanitize_retrieved_knowledge(retrieved_knowledge: str) -> str:
     """
     Remove obvious instruction-like content from retrieved material

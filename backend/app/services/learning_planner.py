@@ -68,17 +68,24 @@ def select_next_concept(
 
         # Already mastered.
         if mastery >= MASTERY_THRESHOLD:
+    # A mastered concept may still require
+    # prerequisite reinforcement.
+            if not prerequisites_satisfied(
+                db,
+                student_id,
+                concept,
+            ):
+                return concept
+
             continue
 
-        # Don't introduce a concept until
-        # its prerequisites are understood.
+# Don't introduce a concept until
+# its prerequisites are understood.
         if not prerequisites_satisfied(
             db,
             student_id,
-            concept,
+            concept,    
         ):
             continue
 
         return concept
-
-    return None

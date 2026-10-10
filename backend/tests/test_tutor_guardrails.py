@@ -146,3 +146,21 @@ def test_grounding_validator_rejects_unsupported_claim_with_overlap():
     )
 
     assert validate_grounding(response, evidence) is False
+
+def test_grounding_validator_rejects_unsupported_conclusion():
+    from app.tutor.tutor_service import validate_grounding
+
+    evidence = (
+        "Focal length is a property of a camera lens, measured in millimeters. "
+        "A shorter focal length provides a wider angle of view, while a longer "
+        "focal length provides a narrower angle of view. "
+        "Perspective describes the spatial relationships and relative sizes "
+        "of objects in an image."
+    )
+
+    response = (
+        "Understanding focal length and perspective is crucial "
+        "for creating visually appealing photographs."
+    )
+
+    assert validate_grounding(response, evidence) is False

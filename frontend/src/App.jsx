@@ -811,6 +811,43 @@ useEffect(() => {
         return;
       }
 
+      if (actionData.action === "prerequisite") {
+        const prerequisiteConcept = {
+          id: actionData.prerequisite_concept_id,
+          name: actionData.prerequisite_concept,
+        };
+
+        setNextConcept(prerequisiteConcept);
+
+        const lessonResponse = await fetch(
+          `${API_BASE_URL}/tutor/lesson`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              student_id: STUDENT_ID,
+              concept_id: prerequisiteConcept.id,
+            }),
+          }
+        );
+
+        const lessonData = await lessonResponse.json();
+
+        if (!lessonResponse.ok) {
+          throw new Error(
+            lessonData.detail ||
+            "Unable to generate the prerequisite lesson."
+          );
+        }
+
+        console.log("Prerequisite lesson generated:", lessonData);
+        setLesson(lessonData);
+        setScreen("lesson");
+        return;
+      }
+
       if (actionData.action === "advance") {
         setNextConcept(null);
         setLesson(null);

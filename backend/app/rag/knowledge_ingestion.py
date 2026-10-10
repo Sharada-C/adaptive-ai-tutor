@@ -168,6 +168,7 @@ def ingest_text_for_concept(
 
             knowledge_chunk = KnowledgeChunk(
                 concept_id=concept_id,
+                subject_id=None,
                 content=chunk_text_value,
                 source=source,
                 embedding=embedding,
@@ -183,3 +184,64 @@ def ingest_text_for_concept(
     except Exception:
         db.rollback()
         raise
+
+def ingest_text_for_subject(
+    db: Session,
+    subject_id: int,
+    text: str,
+    source: str,
+    chunk_size: int = 500,
+    overlap: int = 100,
+    replace_source: bool = False,
+) -> int:
+    """Ingest knowledge that applies to an entire subject."""
+
+    from app.models.curriculum import Subject
+
+    subject = db.get(Subject, subject_id)
+
+    if subject is None:
+        raise ValueError(f"Subject {subject_id} does not exist.")
+
+    if not text or not text.strip():
+        raise ValueError("Knowledge text cannot be empty.")
+
+    if not source or not source.strip():
+        raise ValueError("Knowledge source cannot be empty.")
+
+    chunks = chunk_text(
+        text=text,
+        chunk_size=chunk_size,
+        overlap=overlap,
+    )
+
+    if replace_source:
+        db.query(KnowledgeChunk).filter(
+            KnowledgeChunk.subject_id == subject_id,
+            KnowledgeChunk.source == source,
+        ).delete()
+
+    inserted = 0
+
+    try:
+        for chunk_text_value in chunks:
+            embedding = generate_embedding(chunk_text_value)
+
+            knowledge_chunk = KnowledgeChunk(
+                concept_id=None,
+                subject_id=subject_id,
+                content=chunk_text_value,
+                source=source,
+                embedding=embedding,
+            )
+
+            db.add(knowledge_chunk)
+            inserted += 1
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return inserted

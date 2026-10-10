@@ -6,7 +6,7 @@ from app.db.database import SessionLocal
 from app.tutor.context_builder import build_tutor_context
 from app.tutor.tutor_service import generate_response, generate_grounded_response
 from app.rag.retriever import retrieve_relevant_chunks_with_scores
-
+from app.models.curriculum import Concept
 
 router = APIRouter(
     prefix="/tutor",
@@ -56,14 +56,10 @@ def retrieve_knowledge(
     db: Session,
     query: str,
     concept_id: int,
+    subject_id: int | None = None,
     limit: int = 3,
 ):
-    """
-    Retrieve concept-specific knowledge using pgvector.
-
-    Returns both the knowledge text used by the LLM
-    and retrieval metadata for the API response.
-    """
+    """Prioritize concept-specific evidence over subject-wide evidence."""
 
     results = retrieve_relevant_chunks_with_scores(
         db=db,
@@ -72,18 +68,24 @@ def retrieve_knowledge(
         limit=limit,
     )
 
+    if not results and subject_id is not None:
+        results = retrieve_relevant_chunks_with_scores(
+            db=db,
+            query=query,
+            subject_id=subject_id,
+            limit=limit,
+        )
+
     if not results:
         knowledge_text = "No retrieved knowledge available."
     else:
         knowledge_text = "\n\n".join(
             f"[Knowledge {index}]\n{item['chunk'].content}"
-            for index, item in enumerate(
-                results,
-                start=1,
-            )
+            for index, item in enumerate(results, start=1)
         )
 
     return results, knowledge_text
+
 
 
 @router.post(
@@ -127,10 +129,19 @@ def generate_lesson(
         f" Known misconception: {misconception_text}"
         )
 
+    concept = db.get(Concept, request.concept_id)
+
+    if concept is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Concept not found.",
+        )
+
     knowledge_chunks, knowledge_text = retrieve_knowledge(
         db=db,
         query=retrieval_query,
         concept_id=request.concept_id,
+        subject_id=concept.subject_id,
         limit=2,
     )
     print("\n===== RETRIEVED KNOWLEDGE FOR RETEACH =====")
@@ -396,10 +407,19 @@ def reteach(
         f"Student misconception: {misconception_text}"
     )
 
+    concept = db.get(Concept, request.concept_id)
+
+    if concept is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Concept not found.",
+        )
+
     knowledge_chunks, knowledge_text = retrieve_knowledge(
         db=db,
         query=retrieval_query,
         concept_id=request.concept_id,
+        subject_id=concept.subject_id,
         limit=3,
     )
 
