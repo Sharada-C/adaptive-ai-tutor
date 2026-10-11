@@ -210,10 +210,9 @@ def build_evidence_lesson(retrieved_knowledge: str) -> str:
     ]
 
     statements = []
+    seen_sentences = set()
 
     for chunk in chunks:
-        # Remove the retrieval label such as:
-        # [Knowledge 1]
         cleaned_chunk = re.sub(
             r"^\[Knowledge\s+\d+\]\s*",
             "",
@@ -221,8 +220,36 @@ def build_evidence_lesson(retrieved_knowledge: str) -> str:
             flags=re.IGNORECASE,
         ).strip()
 
-        if cleaned_chunk:
-            statements.append(cleaned_chunk)
+        if not cleaned_chunk:
+            continue
+
+        sentences = re.split(
+            r"(?<=[.!?])\s+",
+            cleaned_chunk,
+        )
+
+        unique_sentences = []
+
+        for sentence in sentences:
+            sentence = sentence.strip()
+
+            if not sentence:
+                continue
+
+            normalized = re.sub(
+                r"\s+",
+                " ",
+                sentence.lower(),
+            )
+
+            if normalized in seen_sentences:
+                continue
+
+            seen_sentences.add(normalized)
+            unique_sentences.append(sentence)
+
+        if unique_sentences:
+            statements.append(" ".join(unique_sentences))
 
     return "\n\n".join(statements)
 

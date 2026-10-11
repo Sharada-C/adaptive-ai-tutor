@@ -178,3 +178,24 @@ def test_grounding_validator_rejects_unsupported_conclusion():
     )
 
     assert validate_grounding(response, evidence) is False
+
+def test_build_evidence_lesson_removes_duplicate_sentences():
+    from app.tutor.tutor_service import build_evidence_lesson
+
+    evidence = (
+        "[Knowledge 1]\n"
+        "A process is a program that is currently executing. "
+        "It uses CPU time and memory.\n\n"
+        "[Knowledge 2]\n"
+        "A process is a program that is currently executing. "
+        "The operating system manages process states."
+    )
+
+    result = build_evidence_lesson(evidence)
+
+    assert result.count(
+        "A process is a program that is currently executing."
+    ) == 1
+
+    assert "It uses CPU time and memory." in result
+    assert "The operating system manages process states." in result
