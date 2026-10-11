@@ -6,9 +6,13 @@ The application uses PostgreSQL with the pgvector extension. Configure the datab
 
 ## Fresh database setup
 
-For a new database, run `python create_tables.py` from the `backend` directory with the backend virtual environment activated.
+For a new, empty database, run `python create_tables.py` from the `backend` directory with the backend virtual environment activated.
 
-This enables the PostgreSQL `vector` extension and creates missing tables using SQLAlchemy models. It does not provide a complete Alembic migration history.
+The script enables the PostgreSQL `vector` extension and creates missing tables and indexes from the registered SQLAlchemy models.
+
+**Important:** `create_tables.py` does not create Alembic migration history. After initializing a fresh database, do not assume it is ready for `alembic upgrade head`. The current initial Alembic revision, `3623a8b541cc`, creates only the `knowledge_chunks.subject_id` index and is not a complete baseline migration.
+
+Until a complete baseline migration is implemented, fresh-database initialization and Alembic migration history must be handled as separate setup steps. Do not stamp a database at the current revision unless you have verified that its schema matches the revision's expected state.
 
 ## Alembic commands
 
