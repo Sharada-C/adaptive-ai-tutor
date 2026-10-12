@@ -164,7 +164,7 @@ def validate_grounding(
 
     return True
 
-    
+
 def sanitize_retrieved_knowledge(retrieved_knowledge: str) -> str:
     """
     Remove obvious instruction-like content from retrieved material
@@ -233,9 +233,15 @@ def build_evidence_lesson(retrieved_knowledge: str) -> str:
         for sentence in sentences:
             sentence = sentence.strip()
 
+            sentence = re.sub(
+                r"^Process Management\s+(?=Process management\s+is\b)",
+                "",
+                sentence,
+                flags=re.IGNORECASE,
+            )
+
             if not sentence:
                 continue
-
             normalized = re.sub(
                 r"\s+",
                 " ",

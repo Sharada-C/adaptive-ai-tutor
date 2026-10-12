@@ -199,3 +199,27 @@ def test_build_evidence_lesson_removes_duplicate_sentences():
 
     assert "It uses CPU time and memory." in result
     assert "The operating system manages process states." in result
+
+def test_build_evidence_lesson_removes_duplicate_sentence_with_title_prefix():
+    from app.tutor.tutor_service import build_evidence_lesson
+
+    evidence = (
+        "[Knowledge 1]\n"
+        "Process Management Process management is the operating system "
+        "activity concerned with creating, scheduling, synchronizing, "
+        "and terminating processes. A process is a program that is "
+        "currently executing.\n\n"
+        "[Knowledge 2]\n"
+        "Process management is the operating system activity concerned "
+        "with creating, scheduling, synchronizing, and terminating processes."
+    )
+
+    result = build_evidence_lesson(evidence)
+
+    target = (
+        "is the operating system activity concerned with creating, "
+        "scheduling, synchronizing, and terminating processes."
+    )
+
+    assert result.lower().count(target.lower()) == 1
+    assert "A process is a program that is currently executing." in result
