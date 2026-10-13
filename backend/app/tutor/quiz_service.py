@@ -191,7 +191,30 @@ Return nothing except the JSON object.
         raise ValueError(
             "LLM returned an incomplete quiz response."
         )
+    # Reject quiz content that introduces terms absent from retrieved evidence.
+    evidence = knowledge_text.lower()
 
+    if evidence.strip() == "no retrieved knowledge available.":
+        raise ValueError(
+            "Cannot generate a quiz without retrieved knowledge."
+        )
+
+    question_and_answer = (
+        result.get("question", "") + " " +
+        result.get("expected_answer", "")
+    ).lower()
+
+    unsupported_terms = [
+        "page tables",
+        "tlb",
+        "translation lookaside buffer",
+    ]
+
+    for term in unsupported_terms:
+        if term in question_and_answer and term not in evidence:
+            raise ValueError(
+                f"Quiz contains unsupported term: {term}"
+            )
     # Validate field types.
     if not isinstance(result["question"], str):
         raise ValueError(
