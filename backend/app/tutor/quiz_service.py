@@ -1,6 +1,9 @@
 import json
 
-from app.tutor.tutor_service import generate_response
+from app.tutor.tutor_service import (
+    generate_response,
+    validate_grounding,
+)
 
 
 def generate_quiz(
@@ -191,30 +194,34 @@ Return nothing except the JSON object.
         raise ValueError(
             "LLM returned an incomplete quiz response."
         )
-    # Reject quiz content that introduces terms absent from retrieved evidence.
-    evidence = knowledge_text.lower()
+    # Reject quiz content that is not sufficiently grounded in evidence.
+    evidence = knowledge_text.strip()
 
-    if evidence.strip() == "no retrieved knowledge available.":
+    if (
+        not evidence
+        or evidence.lower() == "no retrieved knowledge available."
+    ):
         raise ValueError(
             "Cannot generate a quiz without retrieved knowledge."
         )
 
-    question_and_answer = (
-        result.get("question", "") + " " +
-        result.get("expected_answer", "")
-    ).lower()
+    question = result["question"].strip()
+    expected_answer = result["expected_answer"].strip()
 
-    unsupported_terms = [
-        "page tables",
-        "tlb",
-        "translation lookaside buffer",
-    ]
+    if not question or not expected_answer:
+        raise ValueError(
+            "LLM returned an empty question or expected answer."
+        )
 
-    for term in unsupported_terms:
-        if term in question_and_answer and term not in evidence:
-            raise ValueError(
-                f"Quiz contains unsupported term: {term}"
-            )
+    if not validate_grounding(expected_answer, evidence):
+        raise ValueError(
+            "Quiz expected answer is not sufficiently grounded in retrieved knowledge."
+        )
+
+    if not validate_grounding(question, evidence):
+        raise ValueError(
+            "Quiz question is not sufficiently grounded in retrieved knowledge."
+        )
     # Validate field types.
     if not isinstance(result["question"], str):
         raise ValueError(
