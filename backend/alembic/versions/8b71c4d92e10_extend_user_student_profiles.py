@@ -28,6 +28,10 @@ def upgrade() -> None:
         "users",
         ["email"],
     )
+    op.add_column(
+        "users",
+        sa.Column("password_hash", sa.String(length=255), nullable=True),
+    )
 
     # Existing accounts become students and remain active by default.
     op.add_column(
@@ -124,5 +128,6 @@ def downgrade() -> None:
     op.drop_column("users", "is_active")
     op.drop_constraint("ck_users_role", "users", type_="check")
     op.drop_column("users", "role")
+    op.drop_column("users", "password_hash")
     op.drop_constraint("uq_users_email", "users", type_="unique")
     op.drop_column("users", "email")
