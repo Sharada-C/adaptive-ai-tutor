@@ -42,6 +42,12 @@ class User(Base):
         nullable=True,
     )
 
+    # Nullable for legacy accounts; new registrations will always set a hash.
+    password_hash: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
     role: Mapped[str] = mapped_column(
         String(20),
         default="student",
