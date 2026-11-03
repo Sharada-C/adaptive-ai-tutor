@@ -2,6 +2,13 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
+from app.db.database import SessionLocal
+from app.models.student import (
+    User,
+    StudentProfile,
+    DiagnosticSession,
+    DiagnosticQuestion,
+)
 client = TestClient(app)
 
 
@@ -39,3 +46,80 @@ def test_diagnostic_start_invalid_limit():
     )
 
     assert response.status_code == 422
+
+
+def test_student_cannot_submit_another_students_diagnostic_question(
+    test_student,
+):
+    db = SessionLocal()
+    other_student = None
+    session = None
+    question = None
+
+    try:
+        # Create a separate student profile.
+        user = (
+            db.query(User)
+            .filter(User.username == "pytest_other_user")
+            .first()
+            )
+
+        if user is None:
+            user = User(username="pytest_other_user")
+            db.add(user)
+            db.flush()
+
+        other_student = (
+            db.query(StudentProfile)
+            .filter(StudentProfile.user_id == user.id)
+            .first()
+        )
+
+        if other_student is None:
+            other_student = StudentProfile(
+                user_id=user.id,
+                learning_level="beginner",
+            )
+            db.add(other_student)
+            db.flush()
+
+        # Create a diagnostic session owned by test_student.
+        session = DiagnosticSession(
+            student_id=test_student,
+            subject_id=1,
+            status="in_progress",
+        )
+        db.add(session)
+        db.flush()
+
+        question = DiagnosticQuestion(
+            session_id=session.id,
+            concept_id=1,
+            question="What is process management?",
+            expected_answer="It manages processes.",
+            evaluation_criteria='["Defines process management"]',
+            misconception_guidance="Explain process management.",
+        )
+        db.add(question)
+        db.commit()
+
+        response = client.post(
+            "/tutor/diagnostic/submit",
+            json={
+                "student_id": other_student.id,
+                "question_id": question.id,
+                "student_answer": "My answer",
+            },
+        )
+
+        assert response.status_code == 403
+        assert (
+            response.json()["detail"]
+            == "This diagnostic question does not belong to the student."
+        )
+
+        db.refresh(question)
+        assert question.answered is False
+
+    finally:
+        db.close()
