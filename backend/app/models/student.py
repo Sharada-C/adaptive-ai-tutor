@@ -1,19 +1,67 @@
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text, Float
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Float,
+    ForeignKey,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('student', 'admin')",
+            name="ck_users_role",
+        ),
+        UniqueConstraint("email", name="uq_users_email"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+
+    # Kept for compatibility with existing records and API code.
+    # Email will be the login identifier in the authentication phase.
     username: Mapped[str] = mapped_column(
         String(100),
         unique=True,
         nullable=False,
+    )
+
+    # Nullable during migration so existing users without an email remain valid.
+    # New registration schemas will require a valid email.
+    email: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    role: Mapped[str] = mapped_column(
+        String(20),
+        default="student",
+        nullable=False,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    profile: Mapped["StudentProfile | None"] = relationship(
+        back_populates="user",
+        uselist=False,
     )
 
 
@@ -28,14 +76,46 @@ class StudentProfile(Base):
         unique=True,
     )
 
+    user: Mapped["User"] = relationship(
+        back_populates="profile",
+    )
+
+    full_name: Mapped[str | None] = mapped_column(
+        String(120),
+        nullable=True,
+    )
+
     learning_level: Mapped[str] = mapped_column(
         String(50),
         default="beginner",
         nullable=False,
     )
 
+    learning_goals: Mapped[list[str]] = mapped_column(
+        JSON,
+        default=list,
+        nullable=False,
+    )
+
+    learning_style: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    interests: Mapped[list[str]] = mapped_column(
+        JSON,
+        default=list,
+        nullable=False,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         default=datetime.utcnow,
+        nullable=False,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
         nullable=False,
     )
 
@@ -70,6 +150,7 @@ class ConceptMastery(Base):
         default=0,
         nullable=False,
     )
+
 
 class AssessmentAttempt(Base):
     __tablename__ = "assessment_attempts"
@@ -110,6 +191,8 @@ class AssessmentAttempt(Base):
         default=datetime.utcnow,
         nullable=False,
     )
+
+
 class Misconception(Base):
     __tablename__ = "misconceptions"
 
@@ -139,6 +222,8 @@ class Misconception(Base):
         default=datetime.utcnow,
         nullable=False,
     )
+
+
 class DiagnosticSession(Base):
     __tablename__ = "diagnostic_sessions"
 
@@ -196,7 +281,7 @@ class DiagnosticQuestion(Base):
         nullable=False,
     )
 
-    misconception_guidance: Mapped[str] = mapped_column(
+    misconception_guidance: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
