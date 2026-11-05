@@ -58,10 +58,10 @@ def create_quiz(
             concept_id=request.concept_id,
         )
 
-    except ValueError as error:
+    except ValueError:
         raise HTTPException(
             status_code=404,
-            detail=str(error),
+            detail="Quiz context could not be created.",
         )
 
     # ---------------------------------------------------------

@@ -9,7 +9,7 @@ from app.rag.knowledge_ingestion import (
     ingest_text_for_concept,
     ingest_text_for_subject,
 )
-
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 
 router = APIRouter(
     prefix="/knowledge",
@@ -65,10 +65,10 @@ def ingest_knowledge(
             chunks_inserted=inserted,
         )
 
-    except ValueError as error:
+    except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
+            detail="Invalid knowledge data.",
         )
 @router.post("/upload", response_model=KnowledgeIngestResponse, status_code=201)
 def upload_knowledge_file(
@@ -96,8 +96,17 @@ def upload_knowledge_file(
             delete=False,
         ) as temporary_file:
             temporary_path = Path(temporary_file.name)
+            total_size = 0
 
             while chunk := file.file.read(1024 * 1024):
+                total_size += len(chunk)
+
+                if total_size > MAX_UPLOAD_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                    detail="Uploaded file is too large. Maximum size is 10 MB.",
+                    )
+
                 temporary_file.write(chunk)
 
         from app.rag.source_ingestion import ingest_file_for_concept
@@ -117,13 +126,13 @@ def upload_knowledge_file(
             chunks_inserted=inserted,
         )
 
-    except ValueError as error:
+    except ValueError:
         if "temporary_path" in locals():
             temporary_path.unlink(missing_ok=True)
 
         raise HTTPException(
             status_code=400,
-            detail=str(error),
+            detail="Invalid uploaded knowledge file.",
         )
 
     except Exception:
@@ -161,10 +170,10 @@ def ingest_subject_knowledge(
             chunks_inserted=inserted,
         )
 
-    except ValueError as error:
+    except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
+            detail="Invalid subject knowledge data.",
         )
 
 @router.post(
@@ -201,8 +210,17 @@ def upload_subject_knowledge_file(
             delete=False,
         ) as temporary_file:
             temporary_path = Path(temporary_file.name)
+            total_size = 0
 
             while chunk := file.file.read(1024 * 1024):
+                total_size += len(chunk)
+
+                if total_size > MAX_UPLOAD_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Uploaded file is too large. Maximum size is 10 MB.",
+                    )
+
                 temporary_file.write(chunk)
 
         from app.rag.source_ingestion import extract_file_text
@@ -222,10 +240,10 @@ def upload_subject_knowledge_file(
             chunks_inserted=inserted,
         )
 
-    except ValueError as error:
+    except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
+            detail="Invalid uploaded subject knowledge file.",
         )
 
     finally:

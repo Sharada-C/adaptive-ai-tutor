@@ -2,8 +2,8 @@ from pydantic import BaseModel, Field
 
 
 class DiagnosticStartRequest(BaseModel):
-    student_id: int
-    subject_id: int
+    student_id: int = Field(gt=0)
+    subject_id: int = Field(gt=0)
     limit: int = Field(default=5, ge=1, le=20)
 
 
@@ -23,9 +23,9 @@ class DiagnosticStartResponse(BaseModel):
 
 
 class DiagnosticSubmitRequest(BaseModel):
-    student_id: int
-    question_id: int
-    student_answer: str
+    student_id: int = Field(gt=0)
+    question_id: int = Field(gt=0)
+    student_answer: str = Field(min_length=1, max_length=10000)
 
 
 class DiagnosticSubmitResponse(BaseModel):

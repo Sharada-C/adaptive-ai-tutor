@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserCreate(BaseModel):
@@ -8,7 +8,6 @@ class UserCreate(BaseModel):
 class UserResponse(BaseModel):
     id: int
     username: str
-
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -32,15 +31,14 @@ class StudentProfileResponse(BaseModel):
     overall_mastery: float
     subject_mastery: list[SubjectMasteryResponse]
     concepts_to_strengthen: list[ConceptStrengthResponse]
-
     model_config = ConfigDict(from_attributes=True)
 
 
 class MasteryUpdate(BaseModel):
-    concept_id: int
-    mastery_score: float
-    attempts: int = 0
-    correct_answers: int = 0
+    concept_id: int = Field(gt=0)
+    mastery_score: float = Field(ge=0.0, le=1.0)
+    attempts: int = Field(default=0, ge=0)
+    correct_answers: int = Field(default=0, ge=0)
 
 
 class MasteryResponse(BaseModel):
@@ -50,5 +48,4 @@ class MasteryResponse(BaseModel):
     mastery_score: float
     attempts: int
     correct_answers: int
-
     model_config = ConfigDict(from_attributes=True)

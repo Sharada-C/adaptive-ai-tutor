@@ -177,10 +177,10 @@ def generate_new_curriculum(
             curriculum=curriculum,
         )
 
-    except ValueError as error:
+    except ValueError:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
+            detail="Invalid curriculum data.",
         )
 
     return SavedCurriculumResponse(

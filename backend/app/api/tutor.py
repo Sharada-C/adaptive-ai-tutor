@@ -123,10 +123,10 @@ def generate_lesson(
             concept_id=request.concept_id,
         )
 
-    except ValueError as error:
+    except ValueError:
         raise HTTPException(
             status_code=404,
-            detail=str(error),
+            detail="Tutor context could not be created.",
         )
 
     misconceptions = context["misconceptions"]
@@ -401,10 +401,10 @@ def reteach(
             concept_id=request.concept_id,
         )
 
-    except ValueError as error:
+    except ValueError:
         raise HTTPException(
             status_code=404,
-            detail=str(error),
+            detail="Tutor context could not be created.",
         )
 
     misconceptions = context["misconceptions"]

@@ -1,9 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class QuizRequest(BaseModel):
-    student_id: int
-    concept_id: int
+    student_id: int = Field(gt=0)
+    concept_id: int = Field(gt=0)
 
 
 class QuizQuestion(BaseModel):

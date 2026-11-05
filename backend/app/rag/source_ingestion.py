@@ -6,6 +6,7 @@ from app.rag.knowledge_ingestion import ingest_text_for_concept
 
 
 SUPPORTED_TEXT_EXTENSIONS = {".txt", ".md", ".markdown"}
+MAX_EXTRACTED_TEXT_LENGTH = 2_000_000  # 2 million characters
 
 
 def extract_pdf_text(file_path: Path) -> str:
@@ -33,15 +34,25 @@ def extract_file_text(file_path: Path) -> str:
     extension = file_path.suffix.lower()
 
     if extension in SUPPORTED_TEXT_EXTENSIONS:
-        return file_path.read_text(encoding="utf-8").strip()
+        text = file_path.read_text(encoding="utf-8").strip()
 
-    if extension == ".pdf":
-        return extract_pdf_text(file_path)
+    elif extension == ".pdf":
+        text = extract_pdf_text(file_path)
 
-    raise ValueError(
-        "Unsupported file type. "
-        "Currently supported: .txt, .md, .markdown, .pdf"
-    )
+    else:
+        raise ValueError(
+            "Unsupported file type. "
+            "Currently supported: .txt, .md, .markdown, .pdf"
+        )
+
+    if len(text) > MAX_EXTRACTED_TEXT_LENGTH:
+        raise ValueError(
+            "Extracted text is too large. "
+            "Maximum supported size is 2 million characters."
+        )
+
+    return text
+
 
 def ingest_file_for_concept(
     db: Session,
@@ -53,14 +64,10 @@ def ingest_file_for_concept(
     path = Path(file_path)
 
     if not path.exists():
-        raise ValueError(
-            f"File not found: {file_path}"
-        )
+        raise ValueError("Uploaded file could not be found.")
 
     if not path.is_file():
-        raise ValueError(
-            f"Path is not a file: {file_path}"
-        )
+        raise ValueError("Uploaded path is not a file.")
 
     text = extract_file_text(path)
 
