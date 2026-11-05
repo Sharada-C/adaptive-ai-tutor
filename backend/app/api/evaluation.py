@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
-from app.db.database import SessionLocal
+from app.api.dependencies import get_db, get_current_user
+from app.models.student import User
 from app.models.student import (
     AssessmentAttempt,
     ConceptMastery,
@@ -21,15 +21,27 @@ router = APIRouter(
     tags=["Evaluation"],
 )
 
+def get_accessible_student(
+    student_id: int,
+    current_user: User,
+    db: Session,
+) -> StudentProfile:
 
-def get_db():
-    db = SessionLocal()
+    student = db.get(StudentProfile, student_id)
 
-    try:
-        yield db
-    finally:
-        db.close()
+    if not student:
+        raise HTTPException(
+            status_code=404,
+            detail="Student profile not found",
+        )
 
+    if current_user.role != "admin" and student.user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not allowed to access this student's data",
+        )
+
+    return student
 
 @router.post(
     "/evaluate",
@@ -37,21 +49,17 @@ def get_db():
 )
 def evaluate(
     request: EvaluationRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     # ---------------------------------------------------------
     # 1. Verify student
     # ---------------------------------------------------------
-    student = db.get(
-        StudentProfile,
-        request.student_id,
+    get_accessible_student(
+        student_id=request.student_id,
+        current_user=current_user,
+        db=db,
     )
-
-    if not student:
-        raise HTTPException(
-            status_code=404,
-            detail="Student profile not found",
-        )
 
     # ---------------------------------------------------------
     # 2. Evaluate answer using LLM
@@ -178,9 +186,7 @@ def evaluate(
 
     if result == "correct":
     # A correct answer must never create a new misconception.
-    #
-    # Instead, it resolves currently active misconceptions
-    # for this concept.
+    # Instead, it resolves currently active misconceptions for this concept.
 
         active_misconceptions = (
             db.query(Misconception)

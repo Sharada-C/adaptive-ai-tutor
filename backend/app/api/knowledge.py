@@ -3,8 +3,8 @@ from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-
-from app.db.database import SessionLocal
+from app.api.dependencies import get_db, get_current_user
+from app.models.student import User
 from app.rag.knowledge_ingestion import (
     ingest_text_for_concept,
     ingest_text_for_subject,
@@ -37,19 +37,20 @@ class SubjectKnowledgeIngestResponse(BaseModel):
     source: str
     chunks_inserted: int
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 
 @router.post("/ingest", response_model=KnowledgeIngestResponse, status_code=201)
 def ingest_knowledge(
     request: KnowledgeIngestRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins can modify the knowledge base",
+        )
     try:
         inserted = ingest_text_for_concept(
             db=db,
@@ -72,9 +73,15 @@ def ingest_knowledge(
 @router.post("/upload", response_model=KnowledgeIngestResponse, status_code=201)
 def upload_knowledge_file(
     concept_id: int = Form(...),
+    current_user: User = Depends(get_current_user),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    if current_user.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Only admins can modify the knowledge base",
+            )
     try:
         extension = Path(file.filename or "").suffix.lower()
 
@@ -132,8 +139,14 @@ def upload_knowledge_file(
 )
 def ingest_subject_knowledge(
     request: SubjectKnowledgeIngestRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if current_user.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Only admins can modify the knowledge base",
+            )
     try:
         inserted = ingest_text_for_subject(
             db=db,
@@ -161,11 +174,16 @@ def ingest_subject_knowledge(
 )
 def upload_subject_knowledge_file(
     subject_id: int = Form(...),
+    current_user: User = Depends(get_current_user),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     temporary_path = None
-
+    if current_user.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Only admins can modify the knowledge base",
+            )
     try:
         extension = Path(file.filename or "").suffix.lower()
 

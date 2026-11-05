@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db.database import SessionLocal
+from app.api.dependencies import get_db, get_current_user
+from app.models.student import StudentProfile, User
 from app.tutor.context_builder import build_tutor_context
 from app.tutor.tutor_service import generate_response, generate_grounded_response
 from app.rag.retriever import retrieve_relevant_chunks_with_scores
@@ -13,14 +14,27 @@ router = APIRouter(
     tags=["Tutor"],
 )
 
+def get_accessible_student(
+    student_id: int,
+    current_user: User,
+    db: Session,
+) -> StudentProfile:
 
-def get_db():
-    db = SessionLocal()
+    student = db.get(StudentProfile, student_id)
 
-    try:
-        yield db
-    finally:
-        db.close()
+    if not student:
+        raise HTTPException(
+            status_code=404,
+            detail="Student profile not found",
+        )
+
+    if current_user.role != "admin" and student.user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not allowed to access this student's data",
+        )
+
+    return student
 
 
 class LessonRequest(BaseModel):
@@ -94,8 +108,14 @@ def retrieve_knowledge(
 )
 def generate_lesson(
     request: LessonRequest,
+     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    get_accessible_student(
+        student_id=request.student_id,
+        current_user=current_user,
+        db=db,
+    )
     try:
         context = build_tutor_context(
             db=db,
@@ -366,8 +386,14 @@ Return only the lesson and one final understanding-check question.
 )
 def reteach(
     request: ReteachRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    get_accessible_student(
+        student_id=request.student_id,
+        current_user=current_user,
+        db=db,
+    )
     try:
         context = build_tutor_context(
             db=db,

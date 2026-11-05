@@ -1,25 +1,18 @@
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.database import SessionLocal
+from app.api.dependencies import get_db, get_current_user
+from app.models.student import User
 from app.models.curriculum import Concept, Subject
+
 from app.schemas.curriculum import (
     ConceptCreate,
     ConceptResponse,
     SubjectCreate,
     SubjectResponse,
 )
-from app.schemas.curriculum_generation import (
-    CurriculumGenerateRequest,
-    GeneratedCurriculum,
-)
 
-from app.services.curriculum_generator import generate_curriculum
-
-router = APIRouter(
-    prefix="/subjects",
-    tags=["Curriculum"],
-)
 from app.schemas.curriculum_generation import (
     CurriculumGenerateRequest,
     GeneratedCurriculum,
@@ -27,17 +20,13 @@ from app.schemas.curriculum_generation import (
 )
 
 from app.services.curriculum_generator import generate_curriculum
-from app.services.curriculum_persistence import (
-    save_generated_curriculum,
+from app.services.curriculum_persistence import save_generated_curriculum
+
+
+router = APIRouter(
+    prefix="/subjects",
+    tags=["Curriculum"],
 )
-
-def get_db():
-    db = SessionLocal()
-
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.post(
@@ -48,7 +37,14 @@ def get_db():
 def create_subject(
     subject: SubjectCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins can create subjects",
+        )
+
     existing_subject = (
         db.query(Subject)
         .filter(Subject.name == subject.name)
@@ -92,7 +88,14 @@ def create_concept(
     subject_id: int,
     concept: ConceptCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins can create concepts",
+        )
+
     subject = db.get(Subject, subject_id)
 
     if not subject:
@@ -112,7 +115,6 @@ def create_concept(
     db.refresh(new_concept)
 
     return new_concept
-
 
 
 @router.get(
@@ -147,7 +149,14 @@ def get_concepts(
 def generate_new_curriculum(
     request: CurriculumGenerateRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins can generate curricula",
+        )
+
     topic = request.topic.strip()
 
     if not topic:

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.curriculum import Concept, Subject
-from app.db.database import SessionLocal
+from app.api.dependencies import get_db, get_current_user
 from app.models.student import (
     ConceptMastery,
     StudentProfile,
@@ -16,20 +16,38 @@ from app.schemas.student import (
     UserResponse,
 )
 
-
 router = APIRouter(
     prefix="/students",
     tags=["Students"],
 )
 
 
-def get_db():
-    db = SessionLocal()
+def get_accessible_student_profile(
+    user_id: int,
+    current_user: User,
+    db: Session,
+) -> StudentProfile:
+    profile = (
+        db.query(StudentProfile)
+        .filter(StudentProfile.user_id == user_id)
+        .first()
+    )
 
-    try:
-        yield db
-    finally:
-        db.close()
+    if not profile:
+        raise HTTPException(
+            status_code=404,
+            detail="Student profile not found",
+        )
+
+    if current_user.role != "admin" and current_user.id != profile.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not allowed to access this student's profile",
+        )
+
+    return profile
+
+
 
 
 @router.post(
@@ -39,8 +57,14 @@ def get_db():
 )
 def create_user(
     user: UserCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators can create users",
+        )
     existing_user = (
         db.query(User)
         .filter(User.username == user.username)
@@ -71,6 +95,7 @@ def create_user(
 )
 def create_student_profile(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     user = db.get(User, user_id)
@@ -79,6 +104,12 @@ def create_student_profile(
         raise HTTPException(
             status_code=404,
             detail="User not found",
+        )
+
+    if current_user.role != "admin" and current_user.id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not allowed to create this student's profile",
         )
 
     existing_profile = (
@@ -118,19 +149,14 @@ def create_student_profile(
 )
 def get_student_profile(
     user_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    profile = (
-        db.query(StudentProfile)
-        .filter(StudentProfile.user_id == user_id)
-        .first()
+    profile = get_accessible_student_profile(
+        user_id=user_id,
+        current_user=current_user,
+        db=db,
     )
-
-    if not profile:
-        raise HTTPException(
-            status_code=404,
-            detail="Student profile not found",
-        )
 
     mastery_records = (
         db.query(ConceptMastery, Concept, Subject)
@@ -242,6 +268,7 @@ def get_student_profile(
 def update_mastery(
     student_id: int,
     mastery: MasteryUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     student = db.get(StudentProfile, student_id)
@@ -250,6 +277,13 @@ def update_mastery(
         raise HTTPException(
             status_code=404,
             detail="Student profile not found",
+        )
+
+    # Check ownership
+    if current_user.role != "admin" and student.user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not allowed to update this student's mastery",
         )
 
     existing = (
@@ -292,6 +326,7 @@ def update_mastery(
 )
 def get_mastery(
     student_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     student = db.get(StudentProfile, student_id)
@@ -300,6 +335,13 @@ def get_mastery(
         raise HTTPException(
             status_code=404,
             detail="Student profile not found",
+        )
+
+    # Check ownership
+    if current_user.role != "admin" and student.user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not allowed to view this student's mastery",
         )
 
     return (

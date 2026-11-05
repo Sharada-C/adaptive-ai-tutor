@@ -14,6 +14,7 @@ from app.api.evaluation import router as evaluation_router
 from app.api.next import router as next_router
 from app.api.knowledge import router as knowledge_router
 from app.api.diagnostic import router as diagnostic_router
+from app.api.auth import router as auth_router
 
 
 app = FastAPI(
@@ -49,7 +50,7 @@ api_router.include_router(next_router)
 api_router.include_router(knowledge_router)
 api_router.include_router(diagnostic_router)
 
-
+api_router.include_router(auth_router)
 app.include_router(api_router)
 
 
@@ -65,9 +66,9 @@ def health_check():
             "service": "adaptive-ai-tutor",
         }
 
-    except Exception as e:
+    except Exception:
         return {
             "status": "error",
             "database": "disconnected",
-            "detail": str(e),
+            "service": "adaptive-ai-tutor",
         }
