@@ -1,5 +1,5 @@
 from app.db.database import SessionLocal
-from app.models import Concept, ConceptMastery
+from app.models import Concept, ConceptMastery, Subject
 from app.models.student import User, StudentProfile
 from app.services.learning_planner import select_next_concept
 
@@ -55,108 +55,81 @@ def test_select_next_concept_returns_none_when_subject_is_mastered(
 
 
 def test_select_next_concept_respects_prerequisites():
+    """The planner must not pick a concept whose prerequisite is unmastered.
+
+    The test builds its own subject so it does not depend on whatever
+    courses exist in the developer's database, and removes it afterwards.
+    """
+
     db = SessionLocal()
 
+    subject = None
+    user = None
+    student = None
+    concepts = []
+
     try:
-        user = (
-            db.query(User)
-            .filter(User.username == "pytest_planner_user")
-            .first()
+        subject = Subject(
+            name="Planner Prerequisite Test Subject",
+            description="Created by test_planner.py.",
         )
+        db.add(subject)
+        db.flush()
 
-        if user is None:
-            user = User(username="pytest_planner_user")
-            db.add(user)
-            db.flush()
-
-        student = (
-            db.query(StudentProfile)
-            .filter(StudentProfile.user_id == user.id)
-            .first()
+        process_management = Concept(
+            subject_id=subject.id,
+            name="Process Management",
+            description="Prerequisite concept.",
         )
-
-        if student is None:
-            student = StudentProfile(
-                user_id=user.id,
-                learning_level="beginner",
-            )
-            db.add(student)
-            db.flush()
-
-        planner_student_id = student.id
-
-        process_management = (
-            db.query(Concept)
-            .filter(
-                Concept.subject_id == 1,
-                Concept.name == "Process Management",
-            )
-            .first()
+        process_scheduling = Concept(
+            subject_id=subject.id,
+            name="Process Scheduling",
+            description="Requires Process Management.",
         )
+        concepts = [process_management, process_scheduling]
+        db.add_all(concepts)
+        db.flush()
 
-        process_scheduling = (
-            db.query(Concept)
-            .filter(
-                Concept.subject_id == 1,
-                Concept.name == "Process Scheduling",
-            )
-            .first()
+        process_scheduling.prerequisites.append(process_management)
+
+        user = User(username="pytest_planner_user")
+        db.add(user)
+        db.flush()
+
+        student = StudentProfile(
+            user_id=user.id,
+            learning_level="beginner",
         )
+        db.add(student)
+        db.flush()
 
-        assert process_management is not None
-        assert process_scheduling is not None
-
-        # Keep the prerequisite below the mastery threshold.
-        mastery = (
-            db.query(ConceptMastery)
-            .filter(
-                ConceptMastery.student_id == planner_student_id,
-                ConceptMastery.concept_id == process_management.id,
-            )
-            .first()
-        )
-
-        if mastery is None:
-            mastery = ConceptMastery(
-                student_id=planner_student_id,
+        # The prerequisite is below the mastery threshold, and the
+        # dependent concept has not been started.
+        db.add(
+            ConceptMastery(
+                student_id=student.id,
                 concept_id=process_management.id,
                 mastery_score=0.50,
                 attempts=1,
                 correct_answers=0,
             )
-            db.add(mastery)
-        else:
-            mastery.mastery_score = 0.50
-
-        # Make Process Scheduling unmastered too.
-        scheduling_mastery = (
-            db.query(ConceptMastery)
-            .filter(
-                ConceptMastery.student_id == planner_student_id,
-                ConceptMastery.concept_id == process_scheduling.id,
-            )
-            .first()
         )
-
-        if scheduling_mastery is None:
-            db.add(
-                ConceptMastery(
-                    student_id=planner_student_id,
-                    concept_id=process_scheduling.id,
-                    mastery_score=0.0,
-                    attempts=0,
-                    correct_answers=0,
-                )
+        db.add(
+            ConceptMastery(
+                student_id=student.id,
+                concept_id=process_scheduling.id,
+                mastery_score=0.0,
+                attempts=0,
+                correct_answers=0,
             )
-        else:
-            scheduling_mastery.mastery_score = 0.0
+        )
 
         db.commit()
 
         next_concept = select_next_concept(
             db=db,
-            student_id=planner_student_id,
-            subject_id=1,
+            student_id=student.id,
+            subject_id=subject.id,
         )
 
         assert next_concept is not None
@@ -164,4 +137,27 @@ def test_select_next_concept_respects_prerequisites():
         assert next_concept.id != process_scheduling.id
 
     finally:
+        db.rollback()
+
+        if student is not None:
+            db.query(ConceptMastery).filter(
+                ConceptMastery.student_id == student.id
+            ).delete()
+            db.delete(student)
+
+        if user is not None:
+            db.delete(user)
+
+        for concept in concepts:
+            concept.prerequisites.clear()
+
+        db.flush()
+
+        for concept in concepts:
+            db.delete(concept)
+
+        if subject is not None:
+            db.delete(subject)
+
+        db.commit()
         db.close()
