@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.curriculum import Concept, Subject
@@ -9,8 +10,12 @@ from app.models.student import (
     User,
 )
 from app.schemas.student import (
+    LearningLevelResponse,
+    LearningLevelUpdate,
     MasteryResponse,
     MasteryUpdate,
+    StudentBootstrapRequest,
+    StudentBootstrapResponse,
     StudentProfileResponse,
     UserCreate,
     UserResponse,
@@ -62,6 +67,106 @@ def create_user(
     db.refresh(new_user)
 
     return new_user
+
+
+def _get_or_create_student(db: Session, username: str):
+    user = (
+        db.query(User)
+        .filter(User.username == username)
+        .first()
+    )
+
+    if user is None:
+        user = User(username=username)
+        db.add(user)
+        db.flush()
+
+    profile = (
+        db.query(StudentProfile)
+        .filter(StudentProfile.user_id == user.id)
+        .first()
+    )
+
+    if profile is None:
+        profile = StudentProfile(
+            user_id=user.id,
+            learning_level="beginner",
+        )
+        db.add(profile)
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(profile)
+
+    return user, profile
+
+
+@router.post(
+    "/bootstrap",
+    response_model=StudentBootstrapResponse,
+)
+def bootstrap_student(
+    request: StudentBootstrapRequest,
+    db: Session = Depends(get_db),
+):
+    """Return the student for a username, creating it on first use.
+
+    This is idempotent, so the frontend can call it on every page load
+    instead of assuming that a particular student id already exists.
+    """
+
+    username = request.username.strip()
+
+    if not username:
+        raise HTTPException(
+            status_code=400,
+            detail="Username cannot be empty.",
+        )
+
+    try:
+        user, profile = _get_or_create_student(db, username)
+
+    except IntegrityError:
+        # Two simultaneous first requests (for example React StrictMode
+        # in development) can race on the unique constraints. The other
+        # request won, so read what it created.
+        db.rollback()
+        user, profile = _get_or_create_student(db, username)
+
+    return {
+        "user_id": user.id,
+        "student_id": profile.id,
+        "username": user.username,
+        "learning_level": profile.learning_level,
+    }
+
+
+@router.patch(
+    "/{student_id}/level",
+    response_model=LearningLevelResponse,
+)
+def update_learning_level(
+    student_id: int,
+    update: LearningLevelUpdate,
+    db: Session = Depends(get_db),
+):
+    student = db.get(StudentProfile, student_id)
+
+    if not student:
+        raise HTTPException(
+            status_code=404,
+            detail="Student profile not found",
+        )
+
+    student.learning_level = update.learning_level
+
+    db.commit()
+    db.refresh(student)
+
+    return {
+        "student_id": student.id,
+        "learning_level": student.learning_level,
+    }
 
 
 @router.post(

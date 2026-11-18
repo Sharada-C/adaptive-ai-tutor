@@ -70,13 +70,22 @@ def start_diagnostic(
             detail="Subject not found",
         )
 
-    diagnostic = generate_diagnostic(
-        db=db,
-        student_id=request.student_id,
-        subject_id=request.subject_id,
-        student_level=student.learning_level,
-        limit=request.limit,
-    )
+    try:
+        diagnostic = generate_diagnostic(
+            db=db,
+            student_id=request.student_id,
+            subject_id=request.subject_id,
+            student_level=student.learning_level,
+            limit=request.limit,
+        )
+
+    except ValueError as error:
+        # Raised when no study material exists for a concept or the
+        # model returns unusable content. Report it instead of a 500.
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        )
 
     if not diagnostic:
         raise HTTPException(

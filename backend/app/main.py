@@ -1,7 +1,10 @@
-from fastapi import FastAPI, APIRouter
+import requests
+from fastapi import FastAPI, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.db.database import engine
 
 from app.api.curriculum import router as curriculum_router
@@ -23,16 +26,39 @@ app = FastAPI(
 
 
 # Allow the React/Vite frontend to communicate with FastAPI.
+# Origins are configurable through the CORS_ORIGINS setting.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(requests.exceptions.RequestException)
+def handle_llm_unavailable(
+    request: Request,
+    exc: requests.exceptions.RequestException,
+):
+    """Report a clear error when Ollama cannot be reached.
+
+    Every LLM and embedding call goes through ``requests``. Without this
+    handler an offline or misconfigured Ollama surfaces as an opaque
+    plain-text 500, which the frontend cannot display.
+    """
+
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": (
+                "The AI model service (Ollama) is unavailable. "
+                f"Make sure it is running at {settings.ollama_base_url} "
+                f"and that the models '{settings.llm_model}' and "
+                f"'{settings.embedding_model}' are installed."
+            ),
+        },
+    )
 
 
 api_router = APIRouter()
@@ -53,6 +79,21 @@ api_router.include_router(diagnostic_router)
 app.include_router(api_router)
 
 
+def _llm_status() -> str:
+    """Return whether Ollama answers. Never raises."""
+
+    try:
+        response = requests.get(
+            f"{settings.ollama_base_url.rstrip('/')}/api/tags",
+            timeout=2,
+        )
+        response.raise_for_status()
+        return "available"
+
+    except requests.exceptions.RequestException:
+        return "unavailable"
+
+
 @app.get("/health")
 def health_check():
     try:
@@ -62,6 +103,7 @@ def health_check():
         return {
             "status": "ok",
             "database": "connected",
+            "llm": _llm_status(),
             "service": "adaptive-ai-tutor",
         }
 

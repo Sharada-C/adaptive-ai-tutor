@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.tutor.context_builder import build_tutor_context
 from app.tutor.tutor_service import generate_response, generate_grounded_response
-from app.rag.retriever import retrieve_relevant_chunks_with_scores
+from app.rag.retriever import retrieve_with_subject_fallback
 from app.models.curriculum import Concept
 
 router = APIRouter(
@@ -61,20 +61,13 @@ def retrieve_knowledge(
 ):
     """Prioritize concept-specific evidence over subject-wide evidence."""
 
-    results = retrieve_relevant_chunks_with_scores(
+    results = retrieve_with_subject_fallback(
         db=db,
         query=query,
         concept_id=concept_id,
+        subject_id=subject_id,
         limit=limit,
     )
-
-    if not results and subject_id is not None:
-        results = retrieve_relevant_chunks_with_scores(
-            db=db,
-            query=query,
-            subject_id=subject_id,
-            limit=limit,
-        )
 
     if not results:
         knowledge_text = "No retrieved knowledge available."

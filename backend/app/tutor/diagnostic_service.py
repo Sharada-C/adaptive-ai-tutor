@@ -6,7 +6,7 @@ from app.models.curriculum import Subject, Concept
 from app.models.student import ConceptMastery
 from app.tutor.evaluation_service import evaluate_answer
 
-from app.rag.retriever import retrieve_relevant_chunks_with_scores
+from app.rag.retriever import retrieve_with_subject_fallback
 from app.tutor.tutor_service import generate_response
 
 
@@ -86,20 +86,21 @@ def retrieve_diagnostic_knowledge(
     concept: Concept,
 ) -> str:
 
-    results = retrieve_relevant_chunks_with_scores(
+    results = retrieve_with_subject_fallback(
         db=db,
         query=(
             f"{concept.name}. "
             f"{concept.description or ''}"
         ),
         concept_id=concept.id,
+        subject_id=concept.subject_id,
         limit=3,
     )
 
     if not results:
         raise ValueError(
-            f"No knowledge available for diagnostic concept "
-            f"'{concept.name}'."
+            f"No study material is available for '{concept.name}'. "
+            f"Upload material for this subject first."
         )
 
     return "\n\n".join(

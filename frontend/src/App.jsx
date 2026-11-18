@@ -1,3216 +1,866 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./App.css";
-import * as pdfjsLib from "pdfjs-dist";
+import * as api from "./api";
+import { useSessionState } from "./hooks/useSessionState";
+import Header from "./components/Header";
+import Notice from "./components/Notice";
+import SetupScreen from "./screens/SetupScreen";
+import DiagnosticScreen from "./screens/DiagnosticScreen";
+import LessonScreen from "./screens/LessonScreen";
+import QuizScreen from "./screens/QuizScreen";
+import ReteachScreen from "./screens/ReteachScreen";
+import ProgressScreen from "./screens/ProgressScreen";
 
+// The planner is asked again after an "advance" decision. If the planner
+// and the action service ever disagree, that would loop forever, so the
+// number of consecutive planner rounds is capped.
+const MAX_PLANNER_ROUNDS = 10;
 
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
-    import.meta.url
-  ).toString();
-
-const API_BASE_URL = "http://127.0.0.1:8001";
-const STUDENT_ID = 1;
+const DIAGNOSTIC_QUESTIONS = 5;
 
 // ============================================================
-// SESSION STORAGE HELPERS
+// SESSION HELPERS
 // ============================================================
 
-function loadSession(key, fallback) {
+const STUDENT_KEY = "tutor_student_id";
+const SUBJECT_KEY = "tutor_subject_id";
+
+// Removes the saved learning session. Progress itself lives on the
+// server, so this only forgets which screen the learner was on.
+function clearSavedSession(keep = []) {
   try {
-    const value = sessionStorage.getItem(key);
-
-    if (value === null) {
-      return fallback;
-    }
-
-    return JSON.parse(value);
+    Object.keys(sessionStorage)
+      .filter((key) => key.startsWith("tutor_") && !keep.includes(key))
+      .forEach((key) => sessionStorage.removeItem(key));
   } catch {
-    return fallback;
+    // Storage may be unavailable; nothing to clear.
   }
 }
 
-function saveSession(key, value) {
+// A saved session belongs to one learner. If the backend now reports a
+// different one (for example after a database reset), the saved screen
+// and question ids would point at data that no longer exists.
+function adoptSession(studentId) {
   try {
-    sessionStorage.setItem(
-      key,
-      JSON.stringify(value)
-    );
+    const saved = sessionStorage.getItem(STUDENT_KEY);
+
+    if (saved !== null && saved !== String(studentId)) {
+      clearSavedSession();
+    }
+
+    sessionStorage.setItem(STUDENT_KEY, String(studentId));
   } catch {
     // Ignore storage errors.
   }
 }
 
-// ============================================================
-// FILE TEXT EXTRACTION
-// ============================================================
-
-async function extractTextFromFile(file) {
-  if (!file) {
-    throw new Error("No file selected.");
+function describeStatus(screen, health) {
+  switch (screen) {
+    case "diagnostic":
+      return { text: "Diagnostic", state: "ok" };
+    case "lesson":
+      return { text: "Adaptive Lesson", state: "ok" };
+    case "reteach":
+      return { text: "Reteaching", state: "ok" };
+    case "quiz":
+      return { text: "Quiz", state: "ok" };
+    case "progress":
+      return { text: "Progress", state: "ok" };
+    default:
+      break;
   }
 
-  // TXT
-  if (file.type === "text/plain" || file.name.toLowerCase().endsWith(".txt")) {
-    const text = await file.text();
-
-    if (!text.trim()) {
-      throw new Error("The selected text file is empty.");
-    }
-
-    return text;
+  if (!health) {
+    return { text: "Checking...", state: "warn" };
   }
 
-  // PDF
-  if (
-    file.type === "application/pdf" ||
-    file.name.toLowerCase().endsWith(".pdf")
-  ) {
-    const arrayBuffer = await file.arrayBuffer();
-
-    const pdf = await pdfjsLib.getDocument({
-      data: arrayBuffer,
-    }).promise;
-
-    const pages = [];
-
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-      const page = await pdf.getPage(pageNumber);
-
-      const content = await page.getTextContent();
-
-      const pageText = content.items
-        .map((item) => item.str)
-        .join(" ")
-        .trim();
-
-      if (pageText) {
-        pages.push(pageText);
-      }
-    }
-
-    const text = pages.join("\n\n").trim();
-
-    if (!text) {
-      throw new Error(
-        "No readable text was found in this PDF. Scanned/image-only PDFs are not supported yet."
-      );
-    }
-
-    return text;
+  if (health.status === "offline") {
+    return { text: "Backend offline", state: "error" };
   }
 
-  throw new Error(
-    "Unsupported file type. Please upload a PDF or TXT file."
-  );
+  if (health.status !== "ok") {
+    return { text: "Database unavailable", state: "error" };
+  }
+
+  if (health.llm !== "available") {
+    return { text: "AI model offline", state: "warn" };
+  }
+
+  return { text: "AI Tutor Ready", state: "ok" };
 }
 
 // ============================================================
-// APP
+// TUTOR (everything after the learner is known)
 // ============================================================
 
-function App() {
-  // ============================================================
-  // SETUP
-  // ============================================================
+function Tutor({ student, onRestart, onStudentChange }) {
+  const studentId = student.student_id;
+
+  // ----------------------------------------------------------
+  // Backend health
+  // ----------------------------------------------------------
+
+  const [health, setHealth] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .getHealth()
+      .then((data) => {
+        if (!cancelled) setHealth(data);
+      })
+      .catch(() => {
+        if (!cancelled) setHealth({ status: "offline" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const showError = (error) => {
+    console.error(error);
+    setNotice({ type: "error", message: error.message });
+  };
+
+  // ----------------------------------------------------------
+  // Setup
+  // ----------------------------------------------------------
 
   const [subjects, setSubjects] = useState([]);
-  const [subjectId, setSubjectId] = useState(
-    () => loadSession("tutor_subject_id", "")
-  );
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
+  const [subjectError, setSubjectError] = useState("");
+  const [subjectId, setSubjectId] = useSessionState(SUBJECT_KEY, "");
+  const [level, setLevel] = useState(student.learning_level);
+  const [courseTopic, setCourseTopic] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [materialName, setMaterialName] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [materialStatus, setMaterialStatus] = useState(null);
+  const [starting, setStarting] = useState(false);
 
-  const [level, setLevel] = useState(
-    () => loadSession("tutor_level", "beginner")
-  );
-
-  const [material, setMaterial] = useState(null);
-  const [uploadingMaterial, setUploadingMaterial] = useState(false);
-  const [materialStatus, setMaterialStatus] = useState("");
-  // ============================================================
-  // INGEST STUDY MATERIAL
-  // ============================================================
-
-  const handleMaterialUpload = async (file) => {
-    if (!file) {
-      return;
+  const loadSubjects = useCallback(async () => {
+    try {
+      setLoadingSubjects(true);
+      setSubjectError("");
+      setSubjects(await api.getSubjects());
+    } catch (error) {
+      console.error(error);
+      setSubjectError(error.message);
+    } finally {
+      setLoadingSubjects(false);
     }
+  }, []);
 
-    if (!conceptId) {
-      setMaterialStatus(
-        "Please select a concept before uploading material."
-      );
+  useEffect(() => {
+    loadSubjects();
+  }, [loadSubjects]);
+
+  // Ignore a saved subject that no longer exists on the server.
+  const subjectKnown =
+    loadingSubjects ||
+    subjects.some((subject) => String(subject.id) === String(subjectId));
+  const activeSubjectId = subjectKnown ? subjectId : "";
+
+  // ----------------------------------------------------------
+  // Learning flow
+  // ----------------------------------------------------------
+
+  const [screen, setScreen] = useSessionState("tutor_screen", "setup");
+  const [diagnostic, setDiagnostic] = useSessionState("tutor_diagnostic", null);
+  const [questionIndex, setQuestionIndex] = useSessionState(
+    "tutor_question_index",
+    0
+  );
+  const [diagnosticComplete, setDiagnosticComplete] = useSessionState(
+    "tutor_diagnostic_complete",
+    false
+  );
+  const [nextConcept, setNextConcept] = useSessionState(
+    "tutor_next_concept",
+    null
+  );
+  const [lesson, setLesson] = useSessionState("tutor_lesson", null);
+  const [reteachData, setReteachData] = useSessionState("tutor_reteach", null);
+  const [quiz, setQuiz] = useSessionState("tutor_quiz", null);
+  const [quizEvaluation, setQuizEvaluation] = useSessionState(
+    "tutor_quiz_evaluation",
+    null
+  );
+
+  const [answer, setAnswer] = useState("");
+  const [feedback, setFeedback] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [quizAnswer, setQuizAnswer] = useState("");
+  const [loadingLesson, setLoadingLesson] = useState(false);
+  const [loadingReteach, setLoadingReteach] = useState(false);
+  const [loadingQuiz, setLoadingQuiz] = useState(false);
+  const [evaluatingQuiz, setEvaluatingQuiz] = useState(false);
+
+  // ----------------------------------------------------------
+  // Progress
+  // ----------------------------------------------------------
+
+  const [masteryData, setMasteryData] = useState([]);
+  const [concepts, setConcepts] = useState([]);
+  const [studentProfile, setStudentProfile] = useState(null);
+  const [loadingProgress, setLoadingProgress] = useState(false);
+  const [progressError, setProgressError] = useState("");
+
+  const loadProgress = useCallback(async () => {
+    if (!activeSubjectId) {
       return;
     }
 
     try {
-      setUploadingMaterial(true);
-      setMaterialStatus("Reading your material...");
+      setLoadingProgress(true);
+      setProgressError("");
 
-      // Extract text from PDF or TXT.
-      const text = await extractTextFromFile(file);
+      const [mastery, conceptList, profile] = await Promise.all([
+        api.getMastery(studentId),
+        api.getConcepts(Number(activeSubjectId)),
+        api.getProfile(student.user_id),
+      ]);
 
-      if (!text.trim()) {
-        throw new Error(
-          "No readable text was found in the selected file."
-        );
-      }
-
-      setMaterialStatus(
-        "Adding material to the tutor..."
-      );
-
-      // Send extracted text to the existing
-      // knowledge ingestion endpoint.
-      const response = await fetch(
-        `${API_BASE_URL}/knowledge/ingest`,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
-            concept_id: Number(conceptId),
-            text: text,
-            source: file.name,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail ||
-          "Unable to ingest the study material."
-        );
-      }
-
-      console.log(
-        "Material ingestion successful:",
-        data
-      );
-
-      setMaterialStatus(
-        `${data.chunks_inserted} knowledge chunks added successfully.`
-      );
+      setMasteryData(mastery);
+      setConcepts(conceptList);
+      setStudentProfile(profile);
     } catch (error) {
-      console.error(
-        "Material upload failed:",
-        error
-      );
-
-      setMaterialStatus(
-        `Upload failed: ${error.message}`
-      );
+      console.error(error);
+      setProgressError(error.message);
     } finally {
-      setUploadingMaterial(false);
+      setLoadingProgress(false);
+    }
+  }, [studentId, student.user_id, activeSubjectId]);
+
+  useEffect(() => {
+    if (screen === "progress") {
+      loadProgress();
+    }
+  }, [screen, loadProgress]);
+
+  // ============================================================
+  // SETUP ACTIONS
+  // ============================================================
+
+  const handleSubjectChange = (value) => {
+    setSubjectId(value);
+    setMaterialName("");
+    setMaterialStatus(null);
+  };
+
+  const handleLevelChange = async (nextLevel) => {
+    const previous = level;
+
+    setLevel(nextLevel);
+
+    try {
+      await api.setLearningLevel(studentId, nextLevel);
+      onStudentChange({ ...student, learning_level: nextLevel });
+    } catch (error) {
+      setLevel(previous);
+      showError(error);
     }
   };
-  const [conceptId, setConceptId] = useState("");
-  const [loadingConcepts, setLoadingConcepts] = useState(false);
 
-  const [loadingSubjects, setLoadingSubjects] =
-    useState(true);
+  const handleGenerateCourse = async () => {
+    const topic = courseTopic.trim();
 
-  const [subjectError, setSubjectError] =
-    useState("");
+    if (!topic) {
+      return;
+    }
 
-  const [starting, setStarting] =
-    useState(false);
+    try {
+      setGenerating(true);
 
-  // ============================================================
-  // SCREEN
-  // ============================================================
+      const created = await api.generateCourse(topic);
 
-  const [screen, setScreen] = useState(
-    () => loadSession("tutor_screen", "setup")
-  );
+      await loadSubjects();
+
+      handleSubjectChange(String(created.subject_id));
+      setCourseTopic("");
+
+      setNotice({
+        type: "success",
+        message:
+          `Created "${created.subject}" with ${created.concepts_created} ` +
+          "concepts. Upload some study material so the tutor has " +
+          "something to teach from.",
+      });
+    } catch (error) {
+      showError(error);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleMaterialUpload = async (file) => {
+    if (!activeSubjectId) {
+      setMaterialStatus({
+        type: "error",
+        message: "Select a subject before uploading material.",
+      });
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setMaterialName(file.name);
+      setMaterialStatus({
+        type: "info",
+        message: "Reading and indexing your material...",
+      });
+
+      const result = await api.uploadSubjectMaterial(
+        Number(activeSubjectId),
+        file
+      );
+
+      if (!result.chunks_inserted) {
+        throw new Error("No readable text was found in this file.");
+      }
+
+      setMaterialStatus({
+        type: "success",
+        message: `${result.chunks_inserted} knowledge chunks added from ${file.name}.`,
+      });
+    } catch (error) {
+      console.error(error);
+
+      setMaterialStatus({
+        type: "error",
+        message: `Upload failed: ${error.message}`,
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // ============================================================
   // DIAGNOSTIC
   // ============================================================
 
-  const [diagnostic, setDiagnostic] =
-    useState(() =>
-      loadSession("tutor_diagnostic", null)
-    );
-
-  const [currentQuestionIndex, setCurrentQuestionIndex] =
-    useState(() =>
-      loadSession(
-        "tutor_question_index",
-        0
-      )
-    );
-
-  const [answer, setAnswer] =
-    useState("");
-
-  const [feedback, setFeedback] =
-    useState(null);
-
-  const [submitting, setSubmitting] =
-    useState(false);
-
-  const [diagnosticComplete, setDiagnosticComplete] =
-    useState(() =>
-      loadSession(
-        "tutor_diagnostic_complete",
-        false
-      )
-    );
-
-  // ============================================================
-  // ADAPTIVE LESSON
-  // ============================================================
-
-  const [nextConcept, setNextConcept] =
-    useState(() =>
-      loadSession(
-        "tutor_next_concept",
-        null
-      )
-    );
-
-  const [lesson, setLesson] =
-    useState(() =>
-      loadSession(
-        "tutor_lesson",
-        null
-      )
-    );
-
-  const [reteach, setReteach] = useState(
-    () => loadSession("tutor_reteach", null)
-  );
-  const [loadingReteach, setLoadingReteach] = useState(false);
-
-  const [loadingLesson, setLoadingLesson] =
-    useState(false);
-
-  // ============================================================
-  // PROGRESS DASHBOARD
-  // ============================================================
-
-  const [masteryData, setMasteryData] = useState([]);
-  const [concepts, setConcepts] = useState([]);
-  const [studentProfile, setStudentProfile] = useState(null);
-
-  const [loadingProgress, setLoadingProgress] = useState(false);
-  const [progressError, setProgressError] = useState("");
-
-  // ============================================================
-  // QUIZ
-  // ============================================================
-
-  const [quiz, setQuiz] =
-    useState(() =>
-      loadSession("tutor_quiz", null)
-    );
-
-  const [quizAnswer, setQuizAnswer] =
-    useState("");
-
-  const [quizEvaluation, setQuizEvaluation] =
-    useState(() =>
-      loadSession(
-        "tutor_quiz_evaluation",
-        null
-      )
-    );
-
-  const [loadingQuiz, setLoadingQuiz] =
-    useState(false);
-
-  const [evaluatingQuiz, setEvaluatingQuiz] =
-    useState(false);
-
-  // ============================================================
-  // PERSIST SESSION STATE
-  // ============================================================
-
-  useEffect(() => {
-    saveSession(
-      "tutor_screen",
-      screen
-    );
-  }, [screen]);
-
-  useEffect(() => {
-    saveSession(
-      "tutor_subject_id",
-      subjectId
-    );
-  }, [subjectId]);
-
-  useEffect(() => {
-    saveSession(
-      "tutor_level",
-      level
-    );
-  }, [level]);
-
-  useEffect(() => {
-    saveSession(
-      "tutor_diagnostic",
-      diagnostic
-    );
-  }, [diagnostic]);
-
-  useEffect(() => {
-    saveSession(
-      "tutor_question_index",
-      currentQuestionIndex
-    );
-  }, [currentQuestionIndex]);
-
-  useEffect(() => {
-    saveSession(
-      "tutor_diagnostic_complete",
-      diagnosticComplete
-    );
-  }, [diagnosticComplete]);
-
-  useEffect(() => {
-    saveSession(
-      "tutor_next_concept",
-      nextConcept
-    );
-  }, [nextConcept]);
-
-  useEffect(() => {
-    saveSession(
-      "tutor_lesson",
-      lesson
-    );
-  }, [lesson]);
-
-  useEffect(() => {
-    saveSession("tutor_reteach", reteach);
-  }, [reteach]);
-
-  useEffect(() => {
-    saveSession(
-      "tutor_quiz",
-      quiz
-    );
-  }, [quiz]);
-
-  useEffect(() => {
-    saveSession(
-      "tutor_quiz_evaluation",
-      quizEvaluation
-    );
-  }, [quizEvaluation]);
-
-  // ============================================================
-  // LOAD SUBJECTS
-  // ============================================================
-
-  useEffect(() => {
-    async function loadSubjects() {
-      try {
-        setLoadingSubjects(true);
-        setSubjectError("");
-
-        const response = await fetch(
-          `${API_BASE_URL}/subjects`
-        );
-
-        if (!response.ok) {
-          throw new Error(
-            "Unable to load subjects."
-          );
-        }
-
-        const data =
-          await response.json();
-
-        setSubjects(data);
-      } catch (error) {
-        console.error(error);
-
-        setSubjectError(
-          "Could not connect to the tutor backend."
-        );
-      } finally {
-        setLoadingSubjects(false);
-      }
-    }
-
-    loadSubjects();
-  }, []);
-
-  // ============================================================
-// LOAD CONCEPTS FOR SELECTED SUBJECT
-// ============================================================
-
-useEffect(() => {
-  if (!subjectId) {
-    setConcepts([]);
-    setConceptId("");
-    return;
-  }
-
-  async function loadConcepts() {
-    try {
-      setLoadingConcepts(true);
-
-      const response = await fetch(
-        `${API_BASE_URL}/subjects/${Number(subjectId)}/concepts`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail ||
-            "Unable to load concepts."
-        );
-      }
-
-      const conceptList = Array.isArray(data)
-        ? data
-        : [data];
-
-      setConcepts(conceptList);
-
-      // Automatically select the first concept.
-      if (conceptList.length > 0) {
-        setConceptId(
-          String(conceptList[0].id)
-        );
-      } else {
-        setConceptId("");
-      }
-    } catch (error) {
-      console.error(error);
-      setConcepts([]);
-      setConceptId("");
-    } finally {
-      setLoadingConcepts(false);
-    }
-  }
-
-  loadConcepts();
-}, [subjectId]);
-
-  // ============================================================
-  // START DIAGNOSTIC
-  // ============================================================
-
-  const handleStart = async () => {
-    if (!subjectId) {
-      alert(
-        "Please select a subject."
-      );
-      return;
-    }
-
-    try {
-      setStarting(true);
-
-      const response =
-        await fetch(
-          `${API_BASE_URL}/tutor/diagnostic/start`,
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              student_id:
-                STUDENT_ID,
-
-              subject_id:
-                Number(subjectId),
-
-              limit: 5,
-            }),
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail ||
-            "Unable to start diagnostic."
-        );
-      }
-
-      console.log(
-        "Diagnostic started:",
-        data
-      );
-
-      setDiagnostic(data);
-
-      setCurrentQuestionIndex(0);
-
-      setAnswer("");
-
-      setFeedback(null);
-
-      setDiagnosticComplete(
-        false
-      );
-
-      setNextConcept(null);
-
-      setLesson(null);
-
-      setQuiz(null);
-
-      setQuizAnswer("");
-
-      setQuizEvaluation(null);
-
-      setScreen(
-        "diagnostic"
-      );
-    } catch (error) {
-      console.error(error);
-
-      alert(error.message);
-    } finally {
-      setStarting(false);
-    }
-  };
-  // ============================================================
-  // SKIP DIAGNOSTIC
-  // ============================================================
-
-  const handleSkipDiagnostic = async () => {
-    if (!subjectId) {
-      alert("Please select a subject.");
-      return;
-    }
-
-    // Clear any previous temporary session state.
+  const resetLearningState = () => {
     setDiagnostic(null);
-    setCurrentQuestionIndex(0);
+    setQuestionIndex(0);
     setAnswer("");
     setFeedback(null);
     setDiagnosticComplete(false);
 
     setNextConcept(null);
     setLesson(null);
+    setReteachData(null);
 
     setQuiz(null);
     setQuizAnswer("");
     setQuizEvaluation(null);
-
-    // Directly enter the adaptive learning pipeline.
-    await handleContinueLearning();
   };
-  // ============================================================
-  // SUBMIT DIAGNOSTIC ANSWER
-  // ============================================================
 
-  const handleSubmitAnswer =
-    async () => {
-      if (
-        !answer.trim() ||
-        !diagnostic
-      ) {
-        return;
-      }
+  const handleStart = async () => {
+    if (!activeSubjectId) {
+      setNotice({ type: "error", message: "Please select a subject." });
+      return;
+    }
 
-      const currentQuestion =
-        diagnostic.questions[
-          currentQuestionIndex
-        ];
+    try {
+      setStarting(true);
 
-      try {
-        setSubmitting(true);
-
-        const response =
-          await fetch(
-            `${API_BASE_URL}/tutor/diagnostic/submit`,
-            {
-              method: "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body: JSON.stringify({
-                student_id:
-                  STUDENT_ID,
-
-                question_id:
-                  currentQuestion.question_id,
-
-                student_answer:
-                  answer,
-              }),
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.detail ||
-              "Unable to submit answer."
-          );
-        }
-
-        console.log(
-          "Diagnostic answer evaluated:",
-          data
-        );
-
-        setFeedback(data);
-      } catch (error) {
-        console.error(error);
-
-        alert(error.message);
-      } finally {
-        setSubmitting(false);
-      }
-    };
-
-  // ============================================================
-  // NEXT DIAGNOSTIC QUESTION
-  // ============================================================
-
-  const handleNextQuestion =
-    () => {
-      if (!diagnostic) {
-        return;
-      }
-
-      const nextIndex =
-        currentQuestionIndex + 1;
-
-      if (
-        nextIndex >=
-        diagnostic.questions.length
-      ) {
-        setDiagnosticComplete(
-          true
-        );
-
-        return;
-      }
-
-      setCurrentQuestionIndex(
-        nextIndex
+      const data = await api.startDiagnostic(
+        studentId,
+        Number(activeSubjectId),
+        DIAGNOSTIC_QUESTIONS
       );
 
-      setAnswer("");
+      resetLearningState();
+      setDiagnostic(data);
+      setScreen("diagnostic");
+    } catch (error) {
+      showError(error);
+    } finally {
+      setStarting(false);
+    }
+  };
 
-      setFeedback(null);
-    };
+  const handleSkipDiagnostic = async () => {
+    if (!activeSubjectId) {
+      setNotice({ type: "error", message: "Please select a subject." });
+      return;
+    }
+
+    resetLearningState();
+
+    // Go straight to the adaptive learning pipeline.
+    await continueLearning();
+  };
+
+  const handleSubmitAnswer = async () => {
+    if (!answer.trim() || !diagnostic) {
+      return;
+    }
+
+    const currentQuestion = diagnostic.questions[questionIndex];
+
+    try {
+      setSubmitting(true);
+
+      setFeedback(
+        await api.submitDiagnosticAnswer(
+          studentId,
+          currentQuestion.question_id,
+          answer
+        )
+      );
+    } catch (error) {
+      showError(error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleNextQuestion = () => {
+    if (!diagnostic) {
+      return;
+    }
+
+    const nextIndex = questionIndex + 1;
+
+    if (nextIndex >= diagnostic.questions.length) {
+      setDiagnosticComplete(true);
+      return;
+    }
+
+    setQuestionIndex(nextIndex);
+    setAnswer("");
+    setFeedback(null);
+  };
 
   // ============================================================
-  // GET NEXT CONCEPT + GENERATE LESSON
+  // ADAPTIVE LESSON
+  //
+  // startReteach and startQuiz take the concept explicitly. They are
+  // called from continueLearning in the same tick that the concept is
+  // chosen, before React has re-rendered, so reading nextConcept from
+  // state there would use the PREVIOUS concept (or null).
   // ============================================================
 
-  const handleContinueLearning = async () => {
-  if (!subjectId) {
-    alert("Subject information is missing.");
-    return;
-  }
+  const startReteach = async (concept) => {
+    if (!concept) {
+      setNotice({
+        type: "error",
+        message: "No active concept is available for reteaching.",
+      });
+      return;
+    }
 
-  try {
-    setLoadingLesson(true);
+    try {
+      setLoadingReteach(true);
 
-    while (true) {
-      // ------------------------------------------------------
-      // STEP 1: Ask adaptive planner
-      // ------------------------------------------------------
-
-      const plannerResponse = await fetch(
-        `${API_BASE_URL}/students/${STUDENT_ID}/subjects/${Number(
-          subjectId
-        )}/next`
-      );
-
-      const plannerData = await plannerResponse.json();
-
-      if (!plannerResponse.ok) {
-        throw new Error(
-          plannerData.detail ||
-            "Unable to determine the next concept."
-        );
-      }
-
-      console.log("Planner response:", plannerData);
-
-      // ------------------------------------------------------
-      // STEP 2: No concepts remaining
-      // ------------------------------------------------------
-
-      if (
-        plannerData.status === "complete" ||
-        !plannerData.concept
-      ) {
-        setNextConcept(null);
-        setLesson(null);
-        setScreen("lesson");
-        return;
-      }
-
-      // ------------------------------------------------------
-      // STEP 3: Store selected concept
-      // ------------------------------------------------------
-
-      const concept = plannerData.concept;
-
-      console.log(
-        "Adaptive concept selected:",
-        concept
-      );
+      const data = await api.reteach(studentId, concept.id);
 
       setNextConcept(concept);
+      setReteachData(data);
+      setScreen("reteach");
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoadingReteach(false);
+    }
+  };
 
-      // ------------------------------------------------------
-      // STEP 4: Determine adaptive action
-      // ------------------------------------------------------
+  const startQuiz = async (concept) => {
+    if (!concept) {
+      setNotice({
+        type: "error",
+        message: "No concept is available for the quiz.",
+      });
+      return;
+    }
 
-      const actionResponse = await fetch(
-        `${API_BASE_URL}/tutor/next/${STUDENT_ID}/${concept.id}`
-      );
+    try {
+      setLoadingQuiz(true);
 
-      const actionData = await actionResponse.json();
+      const data = await api.generateQuiz(studentId, concept.id);
 
-      if (!actionResponse.ok) {
-        throw new Error(
-          actionData.detail ||
-            "Unable to determine the adaptive action."
-        );
-      }
+      setNextConcept(concept);
+      setQuiz(data);
+      setQuizAnswer("");
+      setQuizEvaluation(null);
+      setScreen("quiz");
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoadingQuiz(false);
+    }
+  };
 
-      console.log(
-        "Adaptive action:",
-        actionData
-      );
+  // Asks the planner which concept comes next, asks the adaptive engine
+  // what to do with it, and opens the matching screen.
+  const continueLearning = async () => {
+    if (!activeSubjectId) {
+      setNotice({ type: "error", message: "Subject information is missing." });
+      return;
+    }
 
-      // ------------------------------------------------------
-      // STEP 5: Follow the adaptive decision
-      // ------------------------------------------------------
+    try {
+      setLoadingLesson(true);
 
-      if (actionData.action === "reteach") {
-        await handleStartReteach();
-        return;
-      }
-
-      if (actionData.action === "practice") {
-        await handleStartQuiz();
-        return;
-      }
-
-      if (actionData.action === "prerequisite") {
-        const prerequisiteConcept = {
-          id: actionData.prerequisite_concept_id,
-          name: actionData.prerequisite_concept,
-        };
-
-        setNextConcept(prerequisiteConcept);
-
-        const lessonResponse = await fetch(
-          `${API_BASE_URL}/tutor/lesson`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              student_id: STUDENT_ID,
-              concept_id: prerequisiteConcept.id,
-            }),
-          }
+      for (let round = 0; round < MAX_PLANNER_ROUNDS; round++) {
+        // Step 1: which concept is next?
+        const planned = await api.getNextConcept(
+          studentId,
+          Number(activeSubjectId)
         );
 
-        const lessonData = await lessonResponse.json();
-
-        if (!lessonResponse.ok) {
-          throw new Error(
-            lessonData.detail ||
-            "Unable to generate the prerequisite lesson."
-          );
+        // Step 2: nothing left to learn.
+        if (planned.status === "complete" || !planned.concept) {
+          setNextConcept(null);
+          setLesson(null);
+          setScreen("lesson");
+          return;
         }
 
-        console.log("Prerequisite lesson generated:", lessonData);
+        const concept = planned.concept;
+
+        setNextConcept(concept);
+
+        // Step 3: what should happen with it?
+        const decision = await api.getNextAction(studentId, concept.id);
+
+        if (decision.action === "reteach") {
+          await startReteach(concept);
+          return;
+        }
+
+        if (decision.action === "practice") {
+          await startQuiz(concept);
+          return;
+        }
+
+        if (decision.action === "advance") {
+          // Already mastered. Ask the planner again.
+          setNextConcept(null);
+          setLesson(null);
+          continue;
+        }
+
+        // Step 4: teach the concept, or its weakest prerequisite.
+        let lessonConcept = concept;
+
+        if (decision.action === "prerequisite") {
+          lessonConcept = {
+            id: decision.prerequisite_concept_id,
+            name: decision.prerequisite_concept,
+          };
+
+          setNextConcept(lessonConcept);
+        }
+
+        const lessonData = await api.generateLesson(studentId, lessonConcept.id);
+
         setLesson(lessonData);
         setScreen("lesson");
         return;
       }
 
-      if (actionData.action === "advance") {
-        setNextConcept(null);
-        setLesson(null);
-
-        console.log(
-          "Concept already mastered. Asking planner for next concept."
-        );
-
-        continue;
-      }
-
-      // ------------------------------------------------------
-      // STEP 6: Normal learning flow
-      // ------------------------------------------------------
-
-      const lessonResponse = await fetch(
-        `${API_BASE_URL}/tutor/lesson`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            student_id: STUDENT_ID,
-            concept_id: concept.id,
-          }),
-        }
+      showError(
+        new Error(
+          "The tutor could not decide what to teach next. " +
+            "Use \"Start over\" and try again."
+        )
       );
-
-      const lessonData = await lessonResponse.json();
-
-      if (!lessonResponse.ok) {
-        throw new Error(
-          lessonData.detail ||
-            "Unable to generate the lesson."
-        );
-      }
-
-      console.log(
-        "Lesson generated:",
-        lessonData
-      );
-
-      setLesson(lessonData);
-      setScreen("lesson");
-
-      return;
-    }
-  } catch (error) {
-    console.error(error);
-    alert(error.message);
-  } finally {
-    setLoadingLesson(false);
-  }
-};
-
-
-  const handleStartReteach = async () => {
-    console.log("RETEACH BUTTON CLICKED");
-
-    if (!nextConcept) {
-      alert("No active concept is available for reteaching.");
-      return;
-    }
-
-    
-    try {
-      setLoadingReteach(true);
-
-      const response = await fetch(`${API_BASE_URL}/tutor/reteach`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          student_id: STUDENT_ID,
-          concept_id: nextConcept.id,
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Unable to generate reteaching."
-        );  
-      }
-
-      console.log("RETEACH RESPONSE:", data);
-      setReteach(data);
-      setScreen("reteach");
     } catch (error) {
-      console.error("Reteach failed:", error);
-      alert(error.message);
+      showError(error);
     } finally {
-      setLoadingReteach(false);
+      setLoadingLesson(false);
     }
   };
+
   // ============================================================
-// LOAD PROGRESS
+  // QUIZ
+  // ============================================================
+
+  const handleEvaluateQuiz = async () => {
+    if (!quiz || !quizAnswer.trim() || !nextConcept) {
+      return;
+    }
+
+    try {
+      setEvaluatingQuiz(true);
+
+      setQuizEvaluation(
+        await api.evaluateQuizAnswer({
+          studentId,
+          conceptId: nextConcept.id,
+          question: quiz.question,
+          expectedAnswer: quiz.expected_answer,
+          studentAnswer: quizAnswer,
+        })
+      );
+    } catch (error) {
+      showError(error);
+    } finally {
+      setEvaluatingQuiz(false);
+    }
+  };
+
+  // The evaluation has already updated mastery on the server, so the
+  // next step is chosen from the updated mastery rather than by moving
+  // to the next item in a list.
+  const handleQuizContinue = async () => {
+    if (!quizEvaluation) {
+      return;
+    }
+
+    const action = quizEvaluation.next_action;
+
+    if (action === "reteach") {
+      await startReteach(nextConcept);
+      return;
+    }
+
+    if (action === "practice") {
+      await startQuiz(nextConcept);
+      return;
+    }
+
+    if (action === "prerequisite" || action === "advance") {
+      await continueLearning();
+      return;
+    }
+
+    // Unknown action: show the learner their progress.
+    setScreen("progress");
+  };
+
+  const handleReteachContinue = async () => {
+    setQuiz(null);
+    setQuizAnswer("");
+    setQuizEvaluation(null);
+    setLesson(null);
+
+    await continueLearning();
+  };
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+
+  const status = describeStatus(screen, health);
+
+  let content;
+
+  if (screen === "progress") {
+    content = (
+      <ProgressScreen
+        subject={subjects.find(
+          (subject) => String(subject.id) === String(activeSubjectId)
+        )}
+        concepts={concepts}
+        masteryData={masteryData}
+        studentProfile={studentProfile}
+        loading={loadingProgress}
+        error={progressError}
+        onContinue={continueLearning}
+        loadingLesson={loadingLesson}
+      />
+    );
+  } else if (screen === "reteach" && reteachData) {
+    content = (
+      <ReteachScreen
+        reteach={reteachData}
+        busy={loadingLesson}
+        onContinue={handleReteachContinue}
+      />
+    );
+  } else if (screen === "lesson") {
+    content = (
+      <LessonScreen
+        nextConcept={nextConcept}
+        lesson={lesson}
+        loadingLesson={loadingLesson}
+        loadingQuiz={loadingQuiz}
+        loadingProgress={loadingProgress}
+        onStartQuiz={() => startQuiz(nextConcept)}
+        onGenerateLesson={continueLearning}
+        onViewProgress={() => setScreen("progress")}
+      />
+    );
+  } else if (screen === "quiz" && quiz) {
+    content = (
+      <QuizScreen
+        quiz={quiz}
+        nextConcept={nextConcept}
+        quizAnswer={quizAnswer}
+        onAnswerChange={setQuizAnswer}
+        evaluation={quizEvaluation}
+        evaluating={evaluatingQuiz}
+        onSubmit={handleEvaluateQuiz}
+        onContinue={handleQuizContinue}
+        busy={loadingLesson || loadingReteach || loadingQuiz}
+      />
+    );
+  } else if (screen === "diagnostic" && diagnostic) {
+    content = (
+      <DiagnosticScreen
+        diagnostic={diagnostic}
+        questionIndex={questionIndex}
+        complete={diagnosticComplete}
+        answer={answer}
+        onAnswerChange={setAnswer}
+        feedback={feedback}
+        submitting={submitting}
+        onSubmit={handleSubmitAnswer}
+        onNext={handleNextQuestion}
+        loadingLesson={loadingLesson}
+        onStartLearning={continueLearning}
+      />
+    );
+  } else {
+    content = (
+      <SetupScreen
+        ready={true}
+        subjects={subjects}
+        loadingSubjects={loadingSubjects}
+        subjectError={subjectError}
+        subjectId={activeSubjectId}
+        onSubjectChange={handleSubjectChange}
+        level={level}
+        onLevelChange={handleLevelChange}
+        courseTopic={courseTopic}
+        onCourseTopicChange={setCourseTopic}
+        onGenerateCourse={handleGenerateCourse}
+        generating={generating}
+        materialName={materialName}
+        uploading={uploading}
+        materialStatus={materialStatus}
+        onMaterialSelected={handleMaterialUpload}
+        onStart={handleStart}
+        starting={starting}
+        onSkip={handleSkipDiagnostic}
+        loadingLesson={loadingLesson}
+      />
+    );
+  }
+
+  return (
+    <div className="app">
+      <Header
+        status={status.text}
+        statusState={status.state}
+        onShowProgress={
+          activeSubjectId && screen !== "progress"
+            ? () => setScreen("progress")
+            : undefined
+        }
+        onRestart={screen !== "setup" ? onRestart : undefined}
+      />
+
+      <Notice notice={notice} onDismiss={() => setNotice(null)} />
+
+      {content}
+    </div>
+  );
+}
+
+// ============================================================
+// APP (identifies the learner, then hands over to Tutor)
 // ============================================================
 
-const loadProgress = async () => {
-  if (!subjectId) {
-    alert("Subject information is missing.");
-    return;
-  }
-
-  try {
-    setLoadingProgress(true);
-    setProgressError("");
-
-    const [masteryResponse, conceptsResponse] =
-      await Promise.all([
-        fetch(
-          `${API_BASE_URL}/students/${STUDENT_ID}/mastery`
-        ),
-        fetch(
-          `${API_BASE_URL}/subjects/${Number(subjectId)}/concepts`
-        ),
-      ]);
-
-    const masteryDataResponse =
-      await masteryResponse.json();
-
-    const conceptsDataResponse =
-      await conceptsResponse.json();
-
-    if (!masteryResponse.ok) {
-      throw new Error(
-        masteryDataResponse.detail ||
-          "Unable to load mastery data."
-      );
-    }
-
-    if (!conceptsResponse.ok) {
-      throw new Error(
-        conceptsDataResponse.detail ||
-          "Unable to load concepts."
-      );
-    }
-
-    setMasteryData(masteryDataResponse);
-
-    // The API normally returns an array.
-    // Keep this defensive so the UI doesn't crash
-    // if only one concept is returned.
-    setConcepts(
-      Array.isArray(conceptsDataResponse)
-        ? conceptsDataResponse
-        : [conceptsDataResponse]
-    );
-  } catch (error) {
-    console.error(error);
-    setProgressError(error.message);
-  } finally {
-    setLoadingProgress(false);
-  }
-};
-
-useEffect(() => {
-  if (screen === "progress" && subjectId) {
-    loadProgress();
-  }
-}, [screen, subjectId]);
- 
-const loadStudentProfile = async () => {
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/students/${STUDENT_ID}/profile`
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        data.detail || "Unable to load student profile."
-      );
-    }
-
-    setStudentProfile(data);
-  } catch (error) {
-    console.error("Failed to load student profile:", error);
-  }
-};
+function App() {
+  const [student, setStudent] = useState(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [session, setSession] = useState(0);
 
   useEffect(() => {
-    loadStudentProfile();
-  }, []);
-  // ============================================================
-  // START QUIZ
-  // ============================================================
+    let cancelled = false;
 
-  const handleStartQuiz =
-    async () => {
-      if (!nextConcept) {
-        alert(
-          "No concept is available for the quiz."
-        );
+    api
+      .getStudent()
+      .then((data) => {
+        if (cancelled) return;
 
-        return;
-      }
+        adoptSession(data.student_id);
+        setStudent(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      });
 
-      try {
-        setLoadingQuiz(true);
-
-        const response =
-          await fetch(
-            `${API_BASE_URL}/tutor/quiz`,
-            {
-              method: "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body: JSON.stringify({
-                student_id:
-                  STUDENT_ID,
-
-                concept_id:
-                  nextConcept.id,
-              }),
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.detail ||
-              "Unable to generate quiz."
-          );
-        }
-
-        console.log(
-          "Quiz generated:",
-          data
-        );
-
-        
-
-        setQuiz(data);
-
-        setQuizAnswer("");
-
-        setQuizEvaluation(
-          null
-        );
-
-        setScreen("quiz");
-      } catch (error) {
-        console.error(error);
-
-        alert(error.message);
-      } finally {
-        setLoadingQuiz(false);
-      }
+    return () => {
+      cancelled = true;
     };
+  }, [attempt]);
 
-  // ============================================================
-  // EVALUATE QUIZ
-  // ============================================================
+  const retry = () => {
+    api.resetStudentCache();
+    setError("");
+    setAttempt((value) => value + 1);
+  };
 
-  const handleEvaluateQuiz =
-    async () => {
-      if (
-        !quiz ||
-        !quizAnswer.trim() ||
-        !nextConcept
-      ) {
-        return;
-      }
+  // Forget the current screen but keep the chosen subject. Mounting a new
+  // Tutor (via its key) resets every piece of learning state at once.
+  const restart = () => {
+    clearSavedSession([STUDENT_KEY, SUBJECT_KEY]);
+    setSession((value) => value + 1);
+  };
 
-      try {
-        setEvaluatingQuiz(
-          true
-        );
+  if (error) {
+    return (
+      <div className="app">
+        <Header status="Backend offline" statusState="error" />
 
-        const response =
-          await fetch(
-            `${API_BASE_URL}/tutor/evaluate`,
-            {
-              method: "POST",
+        <main className="main-content">
+          <section className="setup-card">
+            <div className="card-header">
+              <div>
+                <h3>Can't reach the tutor backend</h3>
+                <p>{error}</p>
+              </div>
+            </div>
 
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body: JSON.stringify({
-                student_id:
-                  STUDENT_ID,
-
-                concept_id:
-                  nextConcept.id,
-
-                question:
-                  quiz.question,
-
-                expected_answer:
-                  quiz.expected_answer,
-
-                student_answer:
-                  quizAnswer,
-              }),
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.detail ||
-              "Unable to evaluate quiz answer."
-          );
-        }
-
-        console.log(
-          "QUIZ EVALUATION NEXT ACTION:",
-          data.next_action,
-          data
-        );
-
-        setQuizEvaluation(
-          data
-        );
-      } catch (error) {
-        console.error(error);
-
-        alert(error.message);
-      } finally {
-        setEvaluatingQuiz(
-          false
-        );
-      }
-    };
-
-  // ============================================================
-  // CONTINUE AFTER QUIZ
-  // ============================================================
-
-  const handleNextAfterQuiz =
-    async () => {
-      /*
-       * IMPORTANT:
-       *
-       * Evaluation has already updated
-       * ConceptMastery in the backend.
-       *
-       * We now ask the adaptive planner again.
-       *
-       * This means the next lesson is determined
-       * by the student's updated mastery rather
-       * than by simply moving to the next array item.
-       */
-
-      setQuiz(null);
-
-      setQuizAnswer("");
-
-      setQuizEvaluation(null);
-
-      // Get the next adaptive concept.
-      await handleContinueLearning();
-    };
-  // ============================================================
-// PROGRESS DASHBOARD
-// ============================================================
-
-if (screen === "progress") {
-  const subject = subjects.find(
-    (item) => item.id === Number(subjectId)
-  );
-
-  const conceptMap = new Map(
-    concepts.map((concept) => [
-      concept.id,
-      concept,
-    ])
-  );
-
-  const subjectMastery = masteryData.filter(
-    (item) =>
-      conceptMap.has(item.concept_id)
-  );
-
-  const overallMastery =
-    subjectMastery.length > 0
-      ? subjectMastery.reduce(
-          (sum, item) =>
-            sum + item.mastery_score,
-          0
-        ) / subjectMastery.length
-      : 0;
-
-  const masteredCount =
-    subjectMastery.filter(
-      (item) => item.mastery_score >= 0.8
-    ).length;
-
-  const learningCount =
-    subjectMastery.filter(
-      (item) => item.mastery_score < 0.8
-    ).length;
-
-  const totalAttempts =
-    subjectMastery.reduce(
-      (sum, item) =>
-        sum + item.attempts,
-      0
-    );
-
-  const totalCorrect =
-    subjectMastery.reduce(
-      (sum, item) =>
-        sum + item.correct_answers,
-      0
-    );
-
-  return (
-    <div className="app">
-
-      <header className="navbar">
-
-        <div className="brand">
-
-          <div className="brand-icon">
-            AI
-          </div>
-
-          <div>
-            <h1>
-              Adaptive AI Tutor
-            </h1>
-
-            <span>
-              Learn at your own pace
-            </span>
-          </div>
-
-        </div>
-
-        <div className="status">
-          <span className="status-dot"></span>
-          Progress
-        </div>
-
-      </header>
-
-      <main className="main-content">
-
-        <section className="diagnostic-card">
-
-          <div className="hero-badge">
-            YOUR PROGRESS
-          </div>
-
-          <h2 className="diagnostic-title">
-
-            See how you're
-            <br />
-
-            <span>
-              progressing.
-            </span>
-
-          </h2>
-
-          {subject && (
-            <p className="lesson-description">
-              {subject.name}
+            <p className="hint">
+              Start the backend from the <code>backend</code> folder with{" "}
+              <code>uvicorn app.main:app --port 8000</code>, and make sure
+              PostgreSQL is running.
             </p>
-          )}
 
-          {loadingProgress ? (
-
-            <div className="loading-message">
-              Loading your progress...
-            </div>
-
-          ) : progressError ? (
-
-            <div className="error-message">
-              {progressError}
-            </div>
-
-          ) : (
-
-            <>
-
-              {/* OVERALL MASTERY */}
-
-              <div className="feedback-box">
-
-                <strong>
-                  Overall Mastery
-                </strong>
-
-                <div
-                  style={{
-                    fontSize: "42px",
-                    fontWeight: "700",
-                    marginTop: "8px",
-                  }}
-                >
-                  {Math.round(
-                    overallMastery * 100
-                  )}
-                  %
-                </div>
-
-                <div
-                  className="progress-track"
-                  style={{
-                    marginTop: "12px",
-                  }}
-                >
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${
-                        overallMastery * 100
-                      }%`,
-                    }}
-                  ></div>
-                </div>
-
-                  </div>
-
-                  {/* LEARNER PROFILE */}
-
-                  {studentProfile && (
-                    <div
-                      className="feedback-box"
-                      style={{
-                        marginTop: "24px",
-                      }}
-                    >
-                      <div className="concept-label">
-                        LEARNER PROFILE
-                      </div>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginTop: "12px",
-                          gap: "16px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <div>
-                          <strong>Learning Level</strong>
-                          <p
-                            style={{
-                              marginTop: "6px",
-                              textTransform: "capitalize",
-                            }}
-                          >
-                            {studentProfile.learning_level}
-                          </p>
-                        </div>
-
-                        <div>
-                          <strong>Overall Mastery</strong>
-                          <p
-                            style={{
-                              marginTop: "6px",
-                            }}
-                          >
-                            {Math.round(
-                              studentProfile.overall_mastery * 100
-                            )}
-                            %
-                          </p>
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "20px",
-                        }}
-                      >
-                        <strong>Subject Progress</strong>
-
-                        {studentProfile.subject_mastery.map(
-                          (subject) => (
-                            <div
-                              key={subject.subject_id}
-                              style={{
-                                marginTop: "14px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                }}
-                              >
-                                <span>
-                                  {subject.subject_name}
-                                </span>
-
-                                <span>
-                                  {Math.round(
-                                    subject.mastery * 100
-                                  )}
-                                  %
-                                </span>
-                              </div>
-
-                              <div
-                                className="progress-track"
-                                style={{
-                                  marginTop: "8px",
-                                }}
-                              >
-                                <div
-                                  className="progress-fill"
-                                  style={{
-                                    width: `${subject.mastery * 100
-                                      }%`,
-                                  }}
-                                ></div>
-                              </div>
-                            </div>
-                          )
-                        )}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "24px",
-                        }}
-                      >
-                        <strong>Concepts to Strengthen</strong>
-
-                        {studentProfile.concepts_to_strengthen.length ===
-                        0 ? (
-                          <p
-                            style={{
-                              marginTop: "10px",
-                              opacity: 0.7,
-                            }}
-                          >
-                            No concepts currently need additional
-                            strengthening.
-                          </p>
-                        ) : (
-                          studentProfile.concepts_to_strengthen.map(
-                            (concept) => (
-                              <div
-                                key={concept.concept_id}
-                                style={{
-                                  marginTop: "14px",
-                                  padding: "12px",
-                                  border: "1px solid #e6e7eb",
-                                  borderRadius: "10px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    gap: "12px",
-                                  }}
-                                >
-                                  <div>
-                                    <strong>
-                                      {concept.concept_name}
-                                    </strong>
-
-                                    <small
-                                      style={{
-                                        display: "block",
-                                        marginTop: "4px",
-                                        opacity: 0.7,
-                                      }}
-                                    >
-                                      {concept.subject_name}
-                                    </small>
-                                  </div>
-
-                                  <span>
-                                    {Math.round(
-                                      concept.mastery * 100
-                                    )}
-                                    %
-                                  </span>
-                                </div>
-
-                                <div
-                                  className="progress-track"
-                                  style={{
-                                    marginTop: "8px",
-                                  }}
-                                >
-                                  <div
-                                    className="progress-fill"
-                                    style={{
-                                      width: `${
-                                        concept.mastery * 100
-                                      }%`,
-                                    }}
-                                  ></div>
-                                </div>
-                              </div>
-                            )
-                          )
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* SUMMARY */}
-
-                  <div className="features">
-
-                <div className="feature">
-
-                  <span>✓</span>
-
-                  <div>
-                    <strong>
-                      {masteredCount}
-                    </strong>
-
-                    <p>
-                      Concepts mastered
-                    </p>
-                  </div>
-
-                </div>
-
-                <div className="feature">
-
-                  <span>📚</span>
-
-                  <div>
-                    <strong>
-                      {learningCount}
-                    </strong>
-
-                    <p>
-                      Concepts to strengthen
-                    </p>
-                  </div>
-
-                </div>
-
-                <div className="feature">
-
-                  <span>🎯</span>
-
-                  <div>
-                    <strong>
-                      {totalAttempts}
-                    </strong>
-
-                    <p>
-                      Total attempts
-                    </p>
-                  </div>
-
-                </div>
-
-              </div>
-
-              {/* CONCEPT BREAKDOWN */}
-
-              <div
-                style={{
-                  marginTop: "28px",
-                }}
-              >
-
-                <div className="concept-label">
-                  CONCEPT BREAKDOWN
-                </div>
-
-                {subjectMastery.length === 0 ? (
-
-                  <div className="loading-message">
-                    No mastery data available yet.
-                  </div>
-
-                ) : (
-
-                  subjectMastery.map(
-                    (mastery) => {
-
-                      const concept =
-                        conceptMap.get(
-                          mastery.concept_id
-                        );
-
-                      if (!concept) {
-                        return null;
-                      }
-
-                      const percentage =
-                        Math.round(
-                          mastery.mastery_score *
-                            100
-                        );
-
-                      return (
-                        <div
-                          key={
-                            mastery.concept_id
-                          }
-                          style={{
-                            marginTop: "18px",
-                            padding: "16px",
-                            border:
-                              "1px solid #e6e7eb",
-                            borderRadius:
-                              "12px",
-                          }}
-                        >
-
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent:
-                                "space-between",
-                              alignItems:
-                                "center",
-                              gap: "12px",
-                            }}
-                          >
-
-                            <strong>
-                              {concept.name}
-                            </strong>
-
-                            <span>
-                              {percentage}%
-                            </span>
-
-                          </div>
-
-                          <div
-                            className="progress-track"
-                            style={{
-                              marginTop: "10px",
-                            }}
-                          >
-
-                            <div
-                              className="progress-fill"
-                              style={{
-                                width: `${percentage}%`,
-                              }}
-                            ></div>
-
-                          </div>
-
-                          <small
-                            style={{
-                              display: "block",
-                              marginTop: "8px",
-                              opacity: 0.7,
-                            }}
-                          >
-                            {mastery.attempts}{" "}
-                            attempts •{" "}
-                            {mastery.correct_answers}{" "}
-                            correct
-                          </small>
-
-                        </div>
-                      );
-                    }
-                  )
-
-                )}
-
-              </div>
-
-              {/* CONTINUE */}
-
-              <button
-                type="button"
-                className="start-button"
-                onClick={
-                  handleContinueLearning
-                }
-                disabled={
-                  loadingLesson
-                }
-                style={{
-                  marginTop: "28px",
-                }}
-              >
-
-                {loadingLesson
-                  ? "Preparing..."
-                  : "Continue Learning"}
-
-                <span>
-                  →
-                </span>
-
-              </button>
-
-            </>
-
-          )}
-
-        </section>
-
-      </main>
-
-    </div>
-  );
-  } {
-    if (screen === "reteach" && reteach) {
-      return (
-        <div className="screen-container">
-        <div className="content-card">
-          <h2>Let's Clear This Up</h2>
-
-          <p>
-            <strong>Concept:</strong> {reteach.concept}
-          </p>
-
-          {reteach.misconceptions &&
-            reteach.misconceptions.length > 0 && (
-              <div className="feedback-box">
-                <h3>What needs correction</h3>
-
-                <ul>
-                  {reteach.misconceptions.map(
-                    (misconception, index) => (
-                      <li key={index}>{misconception}</li>
-                    )
-                  )}
-                </ul>
-              </div>
-            
-            )}
-
-          <div className="lesson-explanation">
-            <h3>Reteaching</h3>
-            <p>{reteach.explanation}</p>
-          </div>
-
-          <button
-            type="button"
-            onClick={async () => {
-              setReteach(null);
-              setQuiz(null);
-              setQuizAnswer("");
-              setQuizEvaluation(null);
-              setLesson(null);
-              await handleContinueLearning();
-            }}
-          >
-            Continue Learning →
-          </button>
-        </div>
+            <button
+              type="button"
+              className="start-button"
+              onClick={retry}
+              style={{ marginTop: "20px" }}
+            >
+              Try again
+              <span>→</span>
+            </button>
+          </section>
+        </main>
       </div>
     );
   }
-  }
 
-
-  // ============================================================
-  // LESSON SCREEN
-  // ============================================================
-
-  if (
-    screen === "lesson"
-  ) {
+  if (!student) {
     return (
       <div className="app">
-
-        <header className="navbar">
-
-          <div className="brand">
-
-            <div className="brand-icon">
-              AI
-            </div>
-
-            <div>
-              <h1>
-                Adaptive AI Tutor
-              </h1>
-
-              <span>
-                Learn at your own pace
-              </span>
-            </div>
-
-          </div>
-
-          <div className="status">
-            <span className="status-dot"></span>
-            Adaptive Lesson
-          </div>
-
-        </header>
+        <Header status="Connecting..." statusState="warn" />
 
         <main className="main-content">
-
-          <section className="diagnostic-card">
-
-            <div className="hero-badge">
-              YOUR NEXT LESSON
-            </div>
-
-            {nextConcept ? (
-              <>
-                <h2 className="diagnostic-title">
-
-                  Let's learn
-                  <br />
-
-                  <span>
-                    {nextConcept.name}.
-                  </span>
-
-                </h2>
-
-                {nextConcept.description && (
-                  <p className="lesson-description">
-                    {
-                      nextConcept.description
-                    }
-                  </p>
-                )}
-              </>
-            ) : (
-              <>
-                <h2 className="diagnostic-title">
-
-                  You've reached the end
-                  <br />
-
-                  <span>
-                    of this learning path.
-                  </span>
-
-                </h2>
-
-                <p>
-                  You have demonstrated mastery
-                  of the available concepts for
-                  this subject.
-                </p>
-
-                <button
-                  type="button"
-                  className="start-button"
-                  onClick={async () => {
-                    await loadProgress();
-                    setScreen("progress");
-                  }}
-                  disabled={loadingProgress}
-                  style={{ marginTop: "24px" }}
-                >
-                    {loadingProgress
-                      ? "Loading Progress..."
-                      : "View Your Progress"}
-
-                  <span>
-                    →
-                  </span>
-                </button>
-              </>
-            )}
-
-            {loadingLesson ? (
-
-              <div className="loading-message">
-                Generating your personalized
-                lesson...
-              </div>
-
-            ) : lesson ? (
-
-              <>
-
-                <div className="feedback-box lesson-content">
-
-                  <strong>
-                    Explanation
-                  </strong>
-
-                  <p>
-                    {lesson.explanation}
-                  </p>
-
-                </div>
-
-                {lesson.retrieved_knowledge &&
-                  lesson.retrieved_knowledge.length >
-                    0 && (
-
-                  <div className="misconception-box">
-
-                    <strong>
-                      Knowledge used by
-                      your tutor
-                    </strong>
-
-                    {lesson.retrieved_knowledge.map(
-                      (item, index) => (
-
-                        <div
-                          key={`${item.source}-${index}`}
-                          className="knowledge-item"
-                        >
-
-                          <small>
-                            {item.source}
-                          </small>
-
-                          <p>
-                            {item.content}
-                          </p>
-
-                        </div>
-
-                      )
-                    )}
-
-                  </div>
-
-                )}
-
-                <div className="question-box">
-
-                  <span className="question-number">
-                    CHECK
-                  </span>
-
-                  <p>
-                    Can you explain{" "}
-                    <strong>
-                      {nextConcept?.name}
-                    </strong>{" "}
-                    in your own words?
-                  </p>
-
-                </div>
-
-                <button
-                  type="button"
-                  className="start-button"
-                  onClick={
-                    handleStartQuiz
-                  }
-                  disabled={
-                    loadingQuiz
-                  }
-                >
-
-                  {loadingQuiz
-                    ? "Preparing Quiz..."
-                    : "Continue to Quiz"}
-
-                  <span>
-                    →
-                  </span>
-
-                </button>
-
-              </>
-
-            ) : nextConcept ? (
-
-              <button
-                type="button"
-                className="start-button"
-                onClick={
-                  handleContinueLearning
-                }
-                disabled={
-                  loadingLesson
-                }
-              >
-
-                Generate Lesson
-
-                <span>
-                  →
-                </span>
-
-              </button>
-
-            ) : null}
-
-          </section>
-
+          <div className="loading-message">Connecting to the tutor...</div>
         </main>
-
       </div>
     );
   }
-
-  // ============================================================
-  // QUIZ SCREEN
-  // ============================================================
-
-  if (
-    screen === "quiz" &&
-    quiz
-  ) {
-    return (
-      <div className="app">
-
-        <header className="navbar">
-
-          <div className="brand">
-
-            <div className="brand-icon">
-              AI
-            </div>
-
-            <div>
-              <h1>
-                Adaptive AI Tutor
-              </h1>
-
-              <span>
-                Learn at your own pace
-              </span>
-            </div>
-
-          </div>
-
-          <div className="status">
-            <span className="status-dot"></span>
-            Quiz
-          </div>
-
-        </header>
-
-        <main className="main-content">
-
-          <section className="diagnostic-card">
-
-            <div className="hero-badge">
-              KNOWLEDGE CHECK
-            </div>
-
-            <h2 className="diagnostic-title">
-
-              Let's see what
-              <br />
-
-              <span>
-                you've learned.
-              </span>
-
-            </h2>
-
-            <div className="concept-label">
-              CONCEPT
-            </div>
-
-            <h3 className="question-concept">
-              {nextConcept?.name}
-            </h3>
-
-            <div className="question-box">
-
-              <span className="question-number">
-                QUIZ
-              </span>
-
-              <p>
-                {quiz.question}
-              </p>
-
-            </div>
-
-            {!quizEvaluation ? (
-
-              <>
-
-                <label
-                  className="answer-label"
-                  htmlFor="quiz-answer"
-                >
-                  Your answer
-                </label>
-
-                <textarea
-                  id="quiz-answer"
-                  className="answer-input"
-                  value={quizAnswer}
-                  onChange={(event) =>
-                    setQuizAnswer(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Explain your answer in your own words..."
-                  rows={6}
-                />
-
-                <button
-                  type="button"
-                  className="start-button"
-                  onClick={
-                    handleEvaluateQuiz
-                  }
-                  disabled={
-                    !quizAnswer.trim() ||
-                    evaluatingQuiz
-                  }
-                >
-
-                  {evaluatingQuiz
-                    ? "Evaluating..."
-                    : "Submit Quiz"}
-
-                  <span>
-                    →
-                  </span>
-
-                </button>
-
-              </>
-
-            ) : (
-
-              <div className="feedback-section">
-
-                <div
-                  className={`feedback-result ${
-                    quizEvaluation.result ===
-                    "correct"
-                      ? "correct"
-                      : "incorrect"
-                  }`}
-                >
-
-                  <strong>
-
-                    {quizEvaluation.result ===
-                    "correct"
-                      ? "Excellent!"
-                      : "Let's strengthen this concept"}
-
-                  </strong>
-
-                  <span>
-
-                    Score:{" "}
-                    {Math.round(
-                      quizEvaluation.score *
-                        100
-                    )}
-                    %
-
-                  </span>
-
-                </div>
-
-                <div className="feedback-box">
-
-                  <strong>
-                    Feedback
-                  </strong>
-
-                  <p>
-                    {
-                      quizEvaluation.feedback
-                    }
-                  </p>
-
-                </div>
-
-                {quizEvaluation.misconception && (
-
-                  <div className="misconception-box">
-
-                    <strong>
-                      What to improve
-                    </strong>
-
-                    <p>
-                      {
-                        quizEvaluation.misconception
-                      }
-                    </p>
-
-                  </div>
-
-                )}
-
-                <div className="question-box">
-
-                  <span className="question-number">
-                    MASTERY
-                  </span>
-
-                  <p>
-
-                    Current mastery:{" "}
-
-                    <strong>
-                      {Math.round(
-                        quizEvaluation.mastery_score *
-                          100
-                      )}
-                      %
-                    </strong>
-
-                  </p>
-
-                </div>
-
-                {quizEvaluation.next_action && (
-
-                  <div className="feedback-box">
-
-                    <strong>
-                      Tutor decision
-                    </strong>
-
-                    <p>
-                      {
-                        quizEvaluation.next_action
-                      }
-                    </p>
-
-                    {quizEvaluation.reason && (
-                      <small>
-                        {
-                          quizEvaluation.reason
-                        }
-                      </small>
-                    )}
-
-                  </div>
-
-                )}
-
-                  <button
-                    type="button"
-                    className="start-button"
-                    onClick={async () => {
-                      if (!quizEvaluation) return;
-
-                      const action = quizEvaluation.next_action;
-
-                      if (action === "reteach") {
-                        await handleStartReteach();
-                        return;
-                      }
-                      
-
-                      if (action === "practice") {
-                        setQuiz(null);
-                        setQuizAnswer("");
-                        setQuizEvaluation(null);
-                        await handleStartQuiz();
-                        return;
-                      }
-
-                      if (action === "prerequisite") {
-                        setQuiz(null);
-                        setQuizAnswer("");
-                        setQuizEvaluation(null);
-                        await handleContinueLearning();
-                        return;
-                      }
-
-                      if (action === "advance") {
-                        setQuiz(null);
-                        setQuizAnswer("");
-                        setQuizEvaluation(null);
-
-                        await handleContinueLearning();
-                        return;
-                      }
-
-                      // Fallback
-                      setQuiz(null);
-                      setQuizAnswer("");
-                      setQuizEvaluation(null);
-                      await loadProgress();
-                      setScreen("progress");
-                    }}
-                    disabled={loadingProgress}
-                  >
-                    {loadingProgress
-                      ? "Loading..."
-                      : quizEvaluation.next_action === "reteach"
-                        ? "Reteach This Concept"
-                        : quizEvaluation.next_action === "practice"
-                          ? "Practice Again"
-                          : quizEvaluation.next_action === "prerequisite"
-                            ? "Learn Prerequisite"
-                            : quizEvaluation.next_action === "advance"
-                              ? "Continue to Next Concept"
-                              : "Continue"}
-
-                    <span>
-                      →
-                    </span>
-                  </button>
-
-              </div>
-
-            )}
-
-          </section>
-
-        </main>
-
-      </div>
-    );
-  }
-
-  // ============================================================
-  // DIAGNOSTIC SCREEN
-  // ============================================================
-
-  if (
-    screen === "diagnostic" &&
-    diagnostic
-  ) {
-
-    const currentQuestion =
-      diagnostic.questions[
-        currentQuestionIndex
-      ];
-
-    const totalQuestions =
-      diagnostic.questions.length;
-
-    const questionNumber =
-      currentQuestionIndex + 1;
-
-    const progress =
-      totalQuestions > 0
-        ? (questionNumber /
-            totalQuestions) *
-          100
-        : 0;
-
-    // ----------------------------------------------------------
-    // DIAGNOSTIC COMPLETE
-    // ----------------------------------------------------------
-
-    if (
-      diagnosticComplete
-    ) {
-
-      return (
-        <div className="app">
-
-          <header className="navbar">
-
-            <div className="brand">
-
-              <div className="brand-icon">
-                AI
-              </div>
-
-              <div>
-                <h1>
-                  Adaptive AI Tutor
-                </h1>
-
-                <span>
-                  Learn at your own pace
-                </span>
-              </div>
-
-            </div>
-
-            <div className="status">
-              <span className="status-dot"></span>
-              Diagnostic Complete
-            </div>
-
-          </header>
-
-          <main className="main-content">
-
-            <section className="diagnostic-card completion-card">
-
-              <div className="completion-icon">
-                ✓
-              </div>
-
-              <div className="hero-badge">
-                DIAGNOSTIC COMPLETE
-              </div>
-
-              <h2>
-
-                Great job.
-                <br />
-
-                <span>
-                  Your learning path is ready.
-                </span>
-
-              </h2>
-
-              <p>
-                Your answers have been evaluated.
-                The tutor can now adapt the
-                learning experience to your
-                current understanding.
-              </p>
-
-              <button
-                type="button"
-                className="start-button"
-                onClick={async () => {
-                  setLesson(null);
-                  setNextConcept(null);
-
-                  await handleContinueLearning();
-                }}
-                disabled={
-                  loadingLesson
-                }
-              >
-
-                {loadingLesson
-                  ? "Preparing Your Lesson..."
-                  : "Start Learning"}
-
-                <span>
-                  →
-                </span>
-
-              </button>
-
-            </section>
-
-          </main>
-
-        </div>
-      );
-    }
-
-    // ----------------------------------------------------------
-    // DIAGNOSTIC QUESTION
-    // ----------------------------------------------------------
-
-    return (
-      <div className="app">
-
-        <header className="navbar">
-
-          <div className="brand">
-
-            <div className="brand-icon">
-              AI
-            </div>
-
-            <div>
-              <h1>
-                Adaptive AI Tutor
-              </h1>
-
-              <span>
-                Learn at your own pace
-              </span>
-            </div>
-
-          </div>
-
-          <div className="status">
-            <span className="status-dot"></span>
-            Diagnostic in progress
-          </div>
-
-        </header>
-
-        <main className="main-content">
-
-          <section className="diagnostic-card">
-
-            <div className="diagnostic-top">
-
-              <div>
-
-                <div className="hero-badge">
-                  KNOWLEDGE CHECK
-                </div>
-
-                <h2 className="diagnostic-title">
-
-                  Let's understand
-                  <br />
-
-                  <span>
-                    what you already know.
-                  </span>
-
-                </h2>
-
-              </div>
-
-              <div className="question-counter">
-
-                <strong>
-                  {questionNumber}
-                </strong>
-
-                <span>
-                  / {totalQuestions}
-                </span>
-
-              </div>
-
-            </div>
-
-            <div className="progress-track">
-
-              <div
-                className="progress-fill"
-                style={{
-                  width: `${progress}%`,
-                }}
-              ></div>
-
-            </div>
-
-            <div className="concept-label">
-              CONCEPT
-            </div>
-
-            <h3 className="question-concept">
-              {currentQuestion.concept}
-            </h3>
-
-            <div className="question-box">
-
-              <span className="question-number">
-                Q{questionNumber}
-              </span>
-
-              <p>
-                {currentQuestion.question}
-              </p>
-
-            </div>
-
-            {!feedback ? (
-
-              <>
-
-                <label
-                  className="answer-label"
-                  htmlFor="answer"
-                >
-                  Your answer
-                </label>
-
-                <textarea
-                  id="answer"
-                  className="answer-input"
-                  value={answer}
-                  onChange={(event) =>
-                    setAnswer(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Explain your answer in your own words..."
-                  rows={6}
-                />
-
-                <button
-                  type="button"
-                  className="start-button"
-                  onClick={
-                    handleSubmitAnswer
-                  }
-                  disabled={
-                    !answer.trim() ||
-                    submitting
-                  }
-                >
-
-                  {submitting
-                    ? "Evaluating..."
-                    : "Submit Answer"}
-
-                  <span>
-                    →
-                  </span>
-
-                </button>
-
-              </>
-
-            ) : (
-
-              <div className="feedback-section">
-
-                <div
-                  className={`feedback-result ${
-                    feedback.result ===
-                    "correct"
-                      ? "correct"
-                      : "incorrect"
-                  }`}
-                >
-
-                  <strong>
-
-                    {feedback.result ===
-                    "correct"
-                      ? "Good understanding"
-                      : "Let's work on this"}
-
-                  </strong>
-
-                  <span>
-
-                    Score:{" "}
-                    {Math.round(
-                      feedback.score *
-                        100
-                    )}
-                    %
-
-                  </span>
-
-                </div>
-
-                <div className="feedback-box">
-
-                  <strong>
-                    Feedback
-                  </strong>
-
-                  <p>
-                    {feedback.feedback}
-                  </p>
-
-                </div>
-
-                {feedback.misconception && (
-
-                  <div className="misconception-box">
-
-                    <strong>
-                      What to improve
-                    </strong>
-
-                    <p>
-                      {
-                        feedback.misconception
-                      }
-                    </p>
-
-                  </div>
-
-                )}
-
-                <button
-                  type="button"
-                  className="start-button"
-                  onClick={
-                    handleNextQuestion
-                  }
-                >
-
-                  {questionNumber ===
-                  totalQuestions
-                    ? "Finish Diagnostic"
-                    : "Next Question"}
-
-                  <span>
-                    →
-                  </span>
-
-                </button>
-
-              </div>
-
-            )}
-
-          </section>
-
-        </main>
-
-      </div>
-    );
-  }
-
-  // ============================================================
-  // SETUP SCREEN
-  // ============================================================
 
   return (
-    <div className="app">
-
-      <header className="navbar">
-
-        <div className="brand">
-
-          <div className="brand-icon">
-            AI
-          </div>
-
-          <div>
-
-            <h1>
-              Adaptive AI Tutor
-            </h1>
-
-            <span>
-              Learn at your own pace
-            </span>
-
-          </div>
-
-        </div>
-
-        <div className="status">
-
-          <span className="status-dot"></span>
-
-          AI Tutor Ready
-
-        </div>
-
-      </header>
-
-      <main className="main-content">
-
-        <section className="hero">
-
-          <div className="hero-badge">
-            PERSONALIZED LEARNING
-          </div>
-
-          <h2>
-
-            Learn anything.
-            <br />
-
-            <span>
-              Your tutor adapts to you.
-            </span>
-
-          </h2>
-
-          <p>
-            Start with a topic or upload your own
-            study material. The tutor assesses your
-            knowledge and adapts the learning path
-            based on your progress.
-          </p>
-
-        </section>
-
-        <section className="setup-card">
-
-          <div className="card-header">
-
-            <div>
-
-              <h3>
-                Start Learning
-              </h3>
-
-              <p>
-                Tell us how you'd like to learn.
-              </p>
-
-            </div>
-
-            <div className="step-number">
-              01
-            </div>
-
-          </div>
-
-          <div className="form-section">
-
-            <label htmlFor="subject">
-              What do you want to learn?
-            </label>
-
-            {loadingSubjects ? (
-
-              <div className="loading-message">
-                Loading subjects...
-              </div>
-
-            ) : subjectError ? (
-
-              <div className="error-message">
-                {subjectError}
-              </div>
-
-            ) : (
-
-              <select
-                id="subject"
-                value={subjectId}
-                onChange={(event) =>
-                  setSubjectId(
-                    event.target.value
-                  )
-                }
-              >
-
-                <option value="">
-                  Select a subject
-                </option>
-
-                {subjects.map(
-                  (subject) => (
-
-                    <option
-                      key={subject.id}
-                      value={subject.id}
-                    >
-                      {subject.name}
-                    </option>
-
-                  )
-                )}
-
-              </select>
-
-            )}
-
-          </div>
-          <div className="form-section">
-
-            <label htmlFor="concept">
-              Which concept do you want to study?
-            </label>
-
-            {loadingConcepts ? (
-
-              <div className="loading-message">
-                Loading concepts...
-              </div>
-
-            ) : concepts.length === 0 ? (
-
-              <div className="loading-message">
-                No concepts available for this subject.
-              </div>
-
-            ) : (
-
-              <select
-                id="concept"
-                value={conceptId}
-                onChange={(event) =>
-                  setConceptId(event.target.value)
-                }
-              >
-
-                <option value="">
-                  Select a concept
-                </option>
-
-                {concepts.map((concept) => (
-
-                  <option
-                    key={concept.id}
-                    value={concept.id}
-                  >
-                    {concept.name}
-                  </option>
-
-                ))}
-
-              </select>
-
-            )}
-
-          </div>
-
-          <div className="form-section">
-
-            <label>
-              What's your current level?
-            </label>
-
-            <div className="level-options">
-
-              <button
-                type="button"
-                className={`level-card ${
-                  level === "beginner"
-                    ? "selected"
-                    : ""
-                }`}
-                onClick={() =>
-                  setLevel(
-                    "beginner"
-                  )
-                }
-              >
-
-                <span className="level-icon">
-                  🌱
-                </span>
-
-                <span>
-
-                  <strong>
-                    Beginner
-                  </strong>
-
-                  <small>
-                    I'm starting from scratch
-                  </small>
-
-                </span>
-
-              </button>
-
-              <button
-                type="button"
-                className={`level-card ${
-                  level === "intermediate"
-                    ? "selected"
-                    : ""
-                }`}
-                onClick={() =>
-                  setLevel(
-                    "intermediate"
-                  )
-                }
-              >
-
-                <span className="level-icon">
-                  📈
-                </span>
-
-                <span>
-
-                  <strong>
-                    Intermediate
-                  </strong>
-
-                  <small>
-                    I know the basics
-                  </small>
-
-                </span>
-
-              </button>
-
-              <button
-                type="button"
-                className={`level-card ${
-                  level === "advanced"
-                    ? "selected"
-                    : ""
-                }`}
-                onClick={() =>
-                  setLevel(
-                    "advanced"
-                  )
-                }
-              >
-
-                <span className="level-icon">
-                  🚀
-                </span>
-
-                <span>
-
-                  <strong>
-                    Advanced
-                  </strong>
-
-                  <small>
-                    I want deeper understanding
-                  </small>
-
-                </span>
-
-              </button>
-
-            </div>
-
-          </div>
-
-          <div className="divider">
-
-            <span>
-              OPTIONAL
-            </span>
-
-          </div>
-
-          <div className="form-section">
-
-            <label>
-              Learn from your own material
-            </label>
-
-            <label className="upload-area">
-
-              <input
-                type="file"
-                accept=".pdf,.txt"
-                disabled={uploadingMaterial}
-                onChange={async (event) => {
-                  const file =
-                    event.target.files[0] || null;
-
-                  setMaterial(file);
-                  setMaterialStatus("");
-
-                  if (file) {
-                    await handleMaterialUpload(file);
-                  }
-                }}
-              />
-
-              <span className="upload-icon">
-                📄
-              </span>
-
-              <span className="upload-title">
-
-                {material
-                  ? material.name
-                  : "Upload your study material"}
-
-              </span>
-
-              <span className="upload-description">
-                PDF or TXT • Optional
-              </span>
-
-            </label>
-
-          </div>
-
-          <button
-            type="button"
-            className="start-button"
-            onClick={handleStart}
-            disabled={
-              loadingSubjects ||
-              !!subjectError ||
-              !subjectId ||
-              starting
-            }
-          >
-
-            {starting
-              ? "Starting..."
-              : "Start Learning"}
-
-            <span>
-              →
-            </span>
-
-          </button>
-          <button
-            type="button"
-            className="skip-diagnostic-button"
-            onClick={handleSkipDiagnostic}
-            disabled={
-              loadingSubjects ||
-              !!subjectError ||
-              !subjectId ||
-              loadingLesson
-            }
-          >
-            {loadingLesson
-              ? "Preparing..."
-              : "Skip Diagnostic — Test Adaptive Learning"}
-          </button>
-          <p className="privacy-note">
-            Your material will be used to create a
-            personalized learning experience.
-          </p>
-
-        </section>
-
-        <section className="features">
-
-          <div className="feature">
-
-            <span>
-              🎯
-            </span>
-
-            <div>
-
-              <strong>
-                Adaptive
-              </strong>
-
-              <p>
-                Learning adjusts to your mastery.
-              </p>
-
-            </div>
-
-          </div>
-
-          <div className="feature">
-
-            <span>
-              🧠
-            </span>
-
-            <div>
-
-              <strong>
-                Personalized
-              </strong>
-
-              <p>
-                Identifies gaps and misconceptions.
-              </p>
-
-            </div>
-
-          </div>
-
-          <div className="feature">
-
-            <span>
-              📚
-            </span>
-
-            <div>
-
-              <strong>
-                Grounded
-              </strong>
-
-              <p>
-                Learn from trusted study material.
-              </p>
-
-            </div>
-
-          </div>
-
-        </section>
-
-      </main>
-
-    </div>
+    <Tutor
+      key={session}
+      student={student}
+      onRestart={restart}
+      onStudentChange={setStudent}
+    />
   );
 }
 

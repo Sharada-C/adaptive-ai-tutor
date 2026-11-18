@@ -1,9 +1,11 @@
 import re
 import requests
 
+from app.core.config import settings
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-MODEL_NAME = "llama3.2:3b"
+
+OLLAMA_URL = f"{settings.ollama_base_url.rstrip('/')}/api/generate"
+MODEL_NAME = settings.llm_model
 
 
 def generate_response(prompt: str) -> str:

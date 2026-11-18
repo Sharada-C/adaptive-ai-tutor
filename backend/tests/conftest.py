@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 # Make the backend directory importable so tests can import app.*
 sys.path.insert(
@@ -56,6 +57,20 @@ def test_student():
                 )
 
         db.flush()
+
+        # The rows above use explicit primary keys, which does not advance
+        # the PostgreSQL id sequences. Without this, the next row created
+        # normally (for example a subject added through the API) would
+        # collide with id 1.
+        for table in ("subjects", "concepts"):
+            db.execute(
+                text(
+                    "SELECT setval("
+                    f"pg_get_serial_sequence('{table}', 'id'), "
+                    f"(SELECT COALESCE(MAX(id), 1) FROM {table})"
+                    ")"
+                )
+            )
 
         # Create a test user.
         user = (
