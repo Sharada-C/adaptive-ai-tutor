@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -70,9 +71,16 @@ def create_user(
 
 
 def _get_or_create_student(db: Session, username: str):
+    """Return (user, profile, created) for a username.
+
+    The lookup ignores case, so "Sharu" and "sharu" are the same profile.
+    """
+
+    created = False
+
     user = (
         db.query(User)
-        .filter(User.username == username)
+        .filter(func.lower(User.username) == username.lower())
         .first()
     )
 
@@ -80,6 +88,7 @@ def _get_or_create_student(db: Session, username: str):
         user = User(username=username)
         db.add(user)
         db.flush()
+        created = True
 
     profile = (
         db.query(StudentProfile)
@@ -98,7 +107,7 @@ def _get_or_create_student(db: Session, username: str):
     db.refresh(user)
     db.refresh(profile)
 
-    return user, profile
+    return user, profile, created
 
 
 @router.post(
@@ -124,20 +133,22 @@ def bootstrap_student(
         )
 
     try:
-        user, profile = _get_or_create_student(db, username)
+        user, profile, created = _get_or_create_student(db, username)
 
     except IntegrityError:
         # Two simultaneous first requests (for example React StrictMode
         # in development) can race on the unique constraints. The other
         # request won, so read what it created.
         db.rollback()
-        user, profile = _get_or_create_student(db, username)
+        user, profile, _ = _get_or_create_student(db, username)
+        created = False
 
     return {
         "user_id": user.id,
         "student_id": profile.id,
         "username": user.username,
         "learning_level": profile.learning_level,
+        "created": created,
     }
 
 

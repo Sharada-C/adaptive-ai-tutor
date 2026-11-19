@@ -3,6 +3,7 @@
 import uuid
 
 import requests
+from sqlalchemy import func
 from fastapi.testclient import TestClient
 
 from app.api import diagnostic, quiz
@@ -26,7 +27,7 @@ def _delete_user(username: str) -> None:
     try:
         user = (
             db.query(User)
-            .filter(User.username == username)
+            .filter(func.lower(User.username) == username.lower())
             .first()
         )
 
@@ -65,7 +66,51 @@ def test_bootstrap_creates_student_and_is_idempotent():
         )
 
         assert second.status_code == 200
-        assert second.json() == created
+        assert second.json() == {**created, "created": False}
+
+    finally:
+        _delete_user(username)
+
+
+def test_bootstrap_reports_whether_profile_was_created():
+    username = f"pytest_bootstrap_{uuid.uuid4().hex[:8]}"
+
+    try:
+        first = client.post(
+            "/students/bootstrap",
+            json={"username": username},
+        ).json()
+
+        second = client.post(
+            "/students/bootstrap",
+            json={"username": username},
+        ).json()
+
+        assert first["created"] is True
+        assert second["created"] is False
+
+    finally:
+        _delete_user(username)
+
+
+def test_bootstrap_ignores_case_and_surrounding_spaces():
+    username = f"PyTest_Case_{uuid.uuid4().hex[:8]}"
+
+    try:
+        created = client.post(
+            "/students/bootstrap",
+            json={"username": username},
+        ).json()
+
+        again = client.post(
+            "/students/bootstrap",
+            json={"username": f"  {username.lower()}  "},
+        ).json()
+
+        assert again["student_id"] == created["student_id"]
+        assert again["created"] is False
+        # The name keeps the capitalisation it was created with.
+        assert again["username"] == username
 
     finally:
         _delete_user(username)

@@ -50,10 +50,11 @@ The frontend calls the backend under `/api`. In development the Vite dev
 server proxies `/api` to `http://127.0.0.1:8000` and strips the prefix, so the
 browser only talks to one origin and no CORS setup is needed.
 
-On first load the frontend calls `POST /students/bootstrap`, which creates the
-learner (default username `learner`) if it does not exist, and uses the
-returned ids for everything else. All endpoint calls live in
-`frontend/src/api.js`.
+On first visit the frontend asks for a name and calls `POST /students/bootstrap`,
+which creates the profile if the name is new (ignoring case) and returns the
+existing one otherwise. The browser remembers the name, and "Switch profile" in
+the header returns to the name screen. There is no password: profiles are
+identified by name only. All endpoint calls live in `frontend/src/api.js`.
 
 Typical flow: choose or generate a course → upload study material → optional
 diagnostic → the planner picks the next concept and the adaptive engine decides
@@ -71,7 +72,6 @@ quizzes and the diagnostic for every concept in it.
 | backend `.env` | `OLLAMA_BASE_URL`, `LLM_MODEL`, `EMBEDDING_MODEL` | local Ollama, `llama3.2:3b`, `nomic-embed-text` |
 | `frontend/.env.local` | `VITE_API_BASE_URL` | `/api` |
 | `frontend/.env.local` | `VITE_PROXY_TARGET` | `http://127.0.0.1:8000` |
-| `frontend/.env.local` | `VITE_STUDENT_USERNAME` | `learner` |
 
 See `.env.example` and `frontend/.env.example`.
 

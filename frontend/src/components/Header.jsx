@@ -3,6 +3,8 @@
 export default function Header({
   status,
   statusState = "ok",
+  profileName,
+  onSwitchProfile,
   onShowProgress,
   onRestart,
 }) {
@@ -25,6 +27,22 @@ export default function Header({
             onClick={onShowProgress}
           >
             Progress
+          </button>
+        )}
+
+        {profileName && (
+          <span className="profile-chip" title="Current profile">
+            {profileName}
+          </span>
+        )}
+
+        {onSwitchProfile && (
+          <button
+            type="button"
+            className="nav-button"
+            onClick={onSwitchProfile}
+          >
+            Switch profile
           </button>
         )}
 

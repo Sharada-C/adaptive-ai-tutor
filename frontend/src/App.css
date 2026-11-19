@@ -958,3 +958,33 @@ select:focus {
     padding: 13px 20px;
   }
 }
+
+/* Profiles */
+
+.profile-chip {
+  max-width: 160px;
+  padding: 6px 12px;
+  overflow: hidden;
+  background: #eef1f6;
+  border-radius: 999px;
+  color: #273143;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 15px;
+  border: 1px solid #dce1e9;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #273143;
+  outline: none;
+}
+
+.text-input:focus {
+  border-color: #7d8798;
+}

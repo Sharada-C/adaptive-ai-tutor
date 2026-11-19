@@ -111,18 +111,32 @@ describe("api client", () => {
   it("shares one bootstrap request between concurrent callers", async () => {
     mockFetch(200, { student_id: 1, user_id: 1 });
 
-    await Promise.all([api.getStudent(), api.getStudent()]);
+    await Promise.all([api.getStudent("Sharu"), api.getStudent("sharu")]);
 
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      username: "Sharu",
+    });
+  });
+
+  it("sends a new request when the profile name changes", async () => {
+    mockFetch(200, { student_id: 1, user_id: 1 });
+
+    await api.getStudent("Sharu");
+    await api.getStudent("Asha");
+
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("retries bootstrap after a failure", async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new TypeError("down"));
 
-    await expect(api.getStudent()).rejects.toThrow();
+    await expect(api.getStudent("Sharu")).rejects.toThrow();
 
     mockFetch(200, { student_id: 1, user_id: 1 });
 
-    await expect(api.getStudent()).resolves.toMatchObject({ student_id: 1 });
+    await expect(api.getStudent("Sharu")).resolves.toMatchObject({
+      student_id: 1,
+    });
   });
 });

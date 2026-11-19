@@ -75,6 +75,7 @@ class StudentBootstrapResponse(BaseModel):
     student_id: int
     username: str
     learning_level: str
+    created: bool = False
 
 
 class LearningLevelUpdate(BaseModel):

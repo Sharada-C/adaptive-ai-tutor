@@ -4,6 +4,8 @@ import * as api from "./api";
 import { useSessionState } from "./hooks/useSessionState";
 import Header from "./components/Header";
 import Notice from "./components/Notice";
+import ProfileScreen from "./screens/ProfileScreen";
+import { forgetUsername, loadUsername, saveUsername } from "./profileStorage";
 import SetupScreen from "./screens/SetupScreen";
 import DiagnosticScreen from "./screens/DiagnosticScreen";
 import LessonScreen from "./screens/LessonScreen";
@@ -93,7 +95,13 @@ function describeStatus(screen, health) {
 // TUTOR (everything after the learner is known)
 // ============================================================
 
-function Tutor({ student, onRestart, onStudentChange }) {
+function Tutor({
+  student,
+  onRestart,
+  onStudentChange,
+  onSwitchProfile,
+  initialNotice,
+}) {
   const studentId = student.student_id;
 
   // ----------------------------------------------------------
@@ -101,7 +109,7 @@ function Tutor({ student, onRestart, onStudentChange }) {
   // ----------------------------------------------------------
 
   const [health, setHealth] = useState(null);
-  const [notice, setNotice] = useState(null);
+  const [notice, setNotice] = useState(initialNotice || null);
 
   useEffect(() => {
     let cancelled = false;
@@ -634,13 +642,13 @@ function Tutor({ student, onRestart, onStudentChange }) {
     setScreen("progress");
   };
 
+  // After reteaching, check understanding of the SAME concept with a
+  // quiz. Asking the planner again would pick this concept again (its
+  // mastery has not changed yet) and show the reteach screen in a loop.
   const handleReteachContinue = async () => {
-    setQuiz(null);
-    setQuizAnswer("");
-    setQuizEvaluation(null);
     setLesson(null);
 
-    await continueLearning();
+    await startQuiz(nextConcept);
   };
 
   // ============================================================
@@ -749,6 +757,8 @@ function Tutor({ student, onRestart, onStudentChange }) {
       <Header
         status={status.text}
         statusState={status.state}
+        profileName={student.username}
+        onSwitchProfile={onSwitchProfile}
         onShowProgress={
           activeSubjectId && screen !== "progress"
             ? () => setScreen("progress")
@@ -769,16 +779,23 @@ function Tutor({ student, onRestart, onStudentChange }) {
 // ============================================================
 
 function App() {
+  const [username, setUsername] = useState(loadUsername);
   const [student, setStudent] = useState(null);
+  const [welcome, setWelcome] = useState(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [session, setSession] = useState(0);
 
+  // Reopen the remembered profile (for example after a page refresh).
   useEffect(() => {
+    if (!username || student) {
+      return undefined;
+    }
+
     let cancelled = false;
 
     api
-      .getStudent()
+      .getStudent(username)
       .then((data) => {
         if (cancelled) return;
 
@@ -792,7 +809,37 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [attempt]);
+  }, [username, student, attempt]);
+
+  // Create a profile or open an existing one. Errors are thrown so the
+  // profile screen can show them next to the form.
+  const logIn = async (name) => {
+    const data = await api.getStudent(name);
+
+    adoptSession(data.student_id);
+    saveUsername(data.username);
+
+    setWelcome({
+      type: "success",
+      message: data.created
+        ? `Profile created for ${data.username}.`
+        : `Welcome back, ${data.username}.`,
+    });
+    setUsername(data.username);
+    setStudent(data);
+  };
+
+  const switchProfile = () => {
+    clearSavedSession();
+    forgetUsername();
+    api.resetStudentCache();
+
+    setWelcome(null);
+    setError("");
+    setStudent(null);
+    setUsername("");
+    setSession((value) => value + 1);
+  };
 
   const retry = () => {
     api.resetStudentCache();
@@ -806,6 +853,16 @@ function App() {
     clearSavedSession([STUDENT_KEY, SUBJECT_KEY]);
     setSession((value) => value + 1);
   };
+
+  if (!username) {
+    return (
+      <div className="app">
+        <Header status="Choose a profile" statusState="warn" />
+
+        <ProfileScreen onSubmit={logIn} />
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -836,6 +893,14 @@ function App() {
               Try again
               <span>→</span>
             </button>
+
+            <button
+              type="button"
+              className="skip-diagnostic-button"
+              onClick={switchProfile}
+            >
+              Use a different profile
+            </button>
           </section>
         </main>
       </div>
@@ -848,7 +913,7 @@ function App() {
         <Header status="Connecting..." statusState="warn" />
 
         <main className="main-content">
-          <div className="loading-message">Connecting to the tutor...</div>
+          <div className="loading-message">Opening your profile...</div>
         </main>
       </div>
     );
@@ -858,8 +923,10 @@ function App() {
     <Tutor
       key={session}
       student={student}
+      initialNotice={welcome}
       onRestart={restart}
       onStudentChange={setStudent}
+      onSwitchProfile={switchProfile}
     />
   );
 }

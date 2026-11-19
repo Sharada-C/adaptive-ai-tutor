@@ -13,8 +13,6 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
   ""
 );
 
-const STUDENT_USERNAME = import.meta.env.VITE_STUDENT_USERNAME || "learner";
-
 export class ApiError extends Error {
   constructor(message, status = 0) {
     super(message);
@@ -93,15 +91,21 @@ async function request(path, { method = "GET", json, formData } = {}) {
 // ------------------------------------------------------------
 
 let studentPromise = null;
+let studentPromiseFor = "";
 
-// Resolves the learner this browser acts as, creating it on first use.
-// The promise is shared so concurrent callers (such as React
-// StrictMode's double effect in development) trigger a single request.
-export function getStudent() {
-  if (!studentPromise) {
+// Opens the profile for a username, creating it when the name is new.
+// Concurrent calls for the same name share one request, so React
+// StrictMode's double effect in development does not send two.
+export function getStudent(username) {
+  const name = username.trim();
+  const key = name.toLowerCase();
+
+  if (!studentPromise || studentPromiseFor !== key) {
+    studentPromiseFor = key;
+
     studentPromise = request("/students/bootstrap", {
       method: "POST",
-      json: { username: STUDENT_USERNAME },
+      json: { username: name },
     }).catch((error) => {
       studentPromise = null;
       throw error;
@@ -113,6 +117,7 @@ export function getStudent() {
 
 export function resetStudentCache() {
   studentPromise = null;
+  studentPromiseFor = "";
 }
 
 export const setLearningLevel = (studentId, learningLevel) =>

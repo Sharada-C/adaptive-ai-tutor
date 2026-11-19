@@ -43,6 +43,9 @@ const CONCEPT_A = { id: 11, name: "Network Devices", description: "Hardware." };
 beforeEach(() => {
   vi.clearAllMocks();
 
+  // Most tests start as a returning user whose name is remembered.
+  localStorage.setItem("tutor_profile_name", "learner");
+
   api.getStudent.mockResolvedValue(STUDENT);
   api.getHealth.mockResolvedValue({ status: "ok", llm: "available" });
   api.getSubjects.mockResolvedValue([{ id: 1, name: "Computer Networks" }]);
@@ -59,6 +62,7 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("AI Tutor Ready")).toBeInTheDocument();
+    expect(api.getStudent).toHaveBeenCalledWith("learner");
     expect(api.getStudent).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Computer Networks")).toBeInTheDocument();
   });
@@ -174,6 +178,17 @@ describe("App", () => {
 
     expect(await screen.findByText("A switch forwards frames.")).toBeInTheDocument();
     expect(api.reteach).toHaveBeenCalledWith(3, 11);
+
+    // Continuing after the reteach checks the SAME concept with a quiz.
+    // It must not ask the planner again (which would reteach in a loop).
+    api.getNextConcept.mockClear();
+    api.generateQuiz.mockClear();
+
+    await user.click(screen.getByRole("button", { name: /continue learning/i }));
+
+    expect(await screen.findByText("QUIZ")).toBeInTheDocument();
+    expect(api.generateQuiz).toHaveBeenCalledWith(3, 11);
+    expect(api.getNextConcept).not.toHaveBeenCalled();
   });
 
   it("goes straight to reteach when the engine says so, using the new concept", async () => {
@@ -301,5 +316,97 @@ describe("App", () => {
       /created "operating systems" with 8 concepts/i
     );
     expect(screen.getByLabelText(/what do you want to learn/i)).toHaveValue("2");
+  });
+});
+
+describe("profiles", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("asks for a name when no profile is remembered", async () => {
+    render(<App />);
+
+    expect(await screen.findByText(/who's learning/i)).toBeInTheDocument();
+    expect(api.getStudent).not.toHaveBeenCalled();
+  });
+
+  it("creates a profile and remembers the name", async () => {
+    api.getStudent.mockResolvedValue({
+      ...STUDENT,
+      username: "Sharu",
+      created: true,
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(await screen.findByLabelText(/^name$/i), "  Sharu ");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Profile created for Sharu."
+    );
+    expect(api.getStudent).toHaveBeenCalledWith("Sharu");
+    expect(localStorage.getItem("tutor_profile_name")).toBe("Sharu");
+    expect(screen.getByTitle("Current profile")).toHaveTextContent("Sharu");
+  });
+
+  it("welcomes back an existing profile", async () => {
+    api.getStudent.mockResolvedValue({
+      ...STUDENT,
+      username: "Sharu",
+      created: false,
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(await screen.findByLabelText(/^name$/i), "sharu");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Welcome back, Sharu."
+    );
+  });
+
+  it("shows the backend error on the profile form", async () => {
+    api.getStudent.mockRejectedValue(new Error("Cannot reach the tutor backend."));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(await screen.findByLabelText(/^name$/i), "Sharu");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    expect(
+      await screen.findByText("Cannot reach the tutor backend.")
+    ).toBeInTheDocument();
+    expect(localStorage.getItem("tutor_profile_name")).toBeNull();
+  });
+
+  it("does not submit a blank name", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByLabelText(/^name$/i);
+
+    expect(screen.getByRole("button", { name: /continue/i })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+    expect(api.getStudent).not.toHaveBeenCalled();
+  });
+
+  it("switches profile back to the name screen", async () => {
+    localStorage.setItem("tutor_profile_name", "learner");
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /switch profile/i })
+    );
+
+    expect(await screen.findByText(/who's learning/i)).toBeInTheDocument();
+    expect(localStorage.getItem("tutor_profile_name")).toBeNull();
   });
 });
