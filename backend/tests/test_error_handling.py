@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from tests.conftest import ensure_account, token_for
 
 from app.db.database import SessionLocal
 from app.models.student import (
@@ -13,6 +14,7 @@ client = TestClient(app)
 
 
 def test_diagnostic_start_invalid_student():
+    # A student id that is not theirs (or does not exist) is refused.
     response = client.post(
         "/tutor/diagnostic/start",
         json={
@@ -22,12 +24,12 @@ def test_diagnostic_start_invalid_student():
         },
     )
 
-    assert response.status_code == 404
-def test_diagnostic_start_invalid_subject():
+    assert response.status_code == 403
+def test_diagnostic_start_invalid_subject(test_student):
     response = client.post(
         "/tutor/diagnostic/start",
         json={
-            "student_id": 1,
+            "student_id": test_student,
             "subject_id": 999999,
             "limit": 2,
         },
@@ -35,11 +37,11 @@ def test_diagnostic_start_invalid_subject():
 
     assert response.status_code == 404
 
-def test_diagnostic_start_invalid_limit():
+def test_diagnostic_start_invalid_limit(test_student):
     response = client.post(
         "/tutor/diagnostic/start",
         json={
-            "student_id": 1,
+            "student_id": test_student,
             "subject_id": 1,
             "limit": 0,
         },
@@ -62,12 +64,15 @@ def test_student_cannot_submit_another_students_diagnostic_question(
             db.query(User)
             .filter(User.username == "pytest_other_user")
             .first()
-            )
+        )
 
         if user is None:
-            user = User(username="pytest_other_user")
-            db.add(user)
-            db.flush()
+            ensure_account("pytest_other_user")
+            user = (
+                db.query(User)
+                .filter(User.username == "pytest_other_user")
+                .one()
+            )
 
         other_student = (
             db.query(StudentProfile)
@@ -105,6 +110,9 @@ def test_student_cannot_submit_another_students_diagnostic_question(
 
         response = client.post(
             "/tutor/diagnostic/submit",
+            # Signed in as the other student, so the request passes the
+            # "is this your profile" check and reaches the question check.
+            headers=token_for("pytest_other_user"),
             json={
                 "student_id": other_student.id,
                 "question_id": question.id,

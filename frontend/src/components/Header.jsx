@@ -4,7 +4,9 @@ export default function Header({
   status,
   statusState = "ok",
   profileName,
-  onSwitchProfile,
+  role,
+  onSignOut,
+  onShowAdmin,
   onShowProgress,
   onRestart,
 }) {
@@ -30,19 +32,24 @@ export default function Header({
           </button>
         )}
 
+        {onShowAdmin && (
+          <button type="button" className="nav-button" onClick={onShowAdmin}>
+            Manage users
+          </button>
+        )}
+
         {profileName && (
-          <span className="profile-chip" title="Current profile">
+          <span className="profile-chip" title="Signed in as">
             {profileName}
+            {role && role !== "student" && (
+              <small className="role-badge">{role}</small>
+            )}
           </span>
         )}
 
-        {onSwitchProfile && (
-          <button
-            type="button"
-            className="nav-button"
-            onClick={onSwitchProfile}
-          >
-            Switch profile
+        {onSignOut && (
+          <button type="button" className="nav-button" onClick={onSignOut}>
+            Sign out
           </button>
         )}
 

@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import ensure_student_access, get_current_user
+from app.models.student import User
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
@@ -38,7 +40,15 @@ def get_db():
 def evaluate(
     request: EvaluationRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     # ---------------------------------------------------------
     # 1. Verify student
     # ---------------------------------------------------------

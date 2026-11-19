@@ -50,11 +50,38 @@ The frontend calls the backend under `/api`. In development the Vite dev
 server proxies `/api` to `http://127.0.0.1:8000` and strips the prefix, so the
 browser only talks to one origin and no CORS setup is needed.
 
-On first visit the frontend asks for a name and calls `POST /students/bootstrap`,
-which creates the profile if the name is new (ignoring case) and returns the
-existing one otherwise. The browser remembers the name, and "Switch profile" in
-the header returns to the name screen. There is no password: profiles are
-identified by name only. All endpoint calls live in `frontend/src/api.js`.
+## Accounts and roles
+
+Everyone signs in with a username and password (`POST /auth/register`,
+`POST /auth/login`). The backend returns a signed token that the frontend sends
+as `Authorization: Bearer ...` on every request. Passwords are stored only as
+salted hashes. Tokens expire after `ACCESS_TOKEN_MINUTES` (default 12 hours).
+
+| Role | Can do |
+|---|---|
+| `student` | Learn: diagnostic, lessons, quizzes, own progress, list courses. Only their own data. |
+| `instructor` | Everything a student can, plus create courses, upload study material, and view any learner's progress. |
+| `admin` | Everything an instructor can, plus manage users (change roles, deactivate, reset passwords). |
+
+Public sign-up always creates a `student`. Roles are checked on the server for
+every request (and read from the database, so changes apply immediately); the
+frontend only hides controls you cannot use.
+
+**Create the first admin** (run from `backend`, once):
+
+```bash
+python create_admin.py <username> <password>
+```
+
+or set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env` and it is created at
+start-up. Sign in as that admin, open "Manage users" and promote others.
+Set `SECRET_KEY` in `.env` to a long random value (for example
+`python -c "import secrets; print(secrets.token_urlsafe(48))"`); without it a
+new key is generated on every start and everyone is signed out on restart.
+
+Databases created before accounts existed are upgraded automatically at
+start-up (new `password_hash`, `role`, `is_active` columns). Old accounts have
+no password until an admin sets one.
 
 Typical flow: choose or generate a course → upload study material → optional
 diagnostic → the planner picks the next concept and the adaptive engine decides
@@ -69,6 +96,7 @@ quizzes and the diagnostic for every concept in it.
 |---|---|---|
 | backend `.env` | `DATABASE_URL` | local Postgres on port 5434 |
 | backend `.env` | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` |
+| backend `.env` | `SECRET_KEY`, `ACCESS_TOKEN_MINUTES`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` | random key, 720, none |
 | backend `.env` | `OLLAMA_BASE_URL`, `LLM_MODEL`, `EMBEDDING_MODEL` | local Ollama, `llama3.2:3b`, `nomic-embed-text` |
 | `frontend/.env.local` | `VITE_API_BASE_URL` | `/api` |
 | `frontend/.env.local` | `VITE_PROXY_TARGET` | `http://127.0.0.1:8000` |

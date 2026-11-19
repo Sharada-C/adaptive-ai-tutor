@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import ensure_student_access, get_current_user, require_staff
+from app.models.student import User
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
@@ -40,6 +42,7 @@ def record_assessment(
     student_id: int,
     assessment: AssessmentCreate,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     student = db.get(StudentProfile, student_id)
 
@@ -74,6 +77,7 @@ def record_misconception(
     student_id: int,
     misconception: MisconceptionCreate,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     student = db.get(StudentProfile, student_id)
 
@@ -103,7 +107,15 @@ def record_misconception(
 def get_misconceptions(
     student_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        student_id,
+        allow_staff=True,
+    )
+
     student = db.get(StudentProfile, student_id)
 
     if not student:
@@ -127,7 +139,15 @@ def get_misconceptions(
 def get_assessments(
     student_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        student_id,
+        allow_staff=True,
+    )
+
     student = db.get(StudentProfile, student_id)
 
     if not student:

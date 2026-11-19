@@ -1,3 +1,6 @@
+import logging
+from contextlib import asynccontextmanager
+
 import requests
 from fastapi import FastAPI, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,8 +8,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.db.database import engine
+from app.db.database import SessionLocal, engine
+from app.db.schema_upgrade import upgrade_user_table
+from app.services.admin_account import ensure_admin
 
+from app.api.auth import router as auth_router
+from app.api.admin import router as admin_router
 from app.api.curriculum import router as curriculum_router
 from app.api.student import router as student_router
 from app.api.assessment import router as assessment_router
@@ -19,9 +26,40 @@ from app.api.knowledge import router as knowledge_router
 from app.api.diagnostic import router as diagnostic_router
 
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Bring old databases up to date and seed the optional admin."""
+
+    try:
+        upgrade_user_table(engine)
+
+        if settings.admin_username and settings.admin_password:
+            db = SessionLocal()
+
+            try:
+                ensure_admin(
+                    db,
+                    settings.admin_username,
+                    settings.admin_password,
+                )
+            finally:
+                db.close()
+
+    except Exception:
+        # The database may be down; /health reports that. Do not stop
+        # the server from starting.
+        logger.exception("Start-up database setup failed.")
+
+    yield
+
+
 app = FastAPI(
     title="Adaptive AI Tutor",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
@@ -64,6 +102,8 @@ def handle_llm_unavailable(
 api_router = APIRouter()
 
 
+api_router.include_router(auth_router)
+api_router.include_router(admin_router)
 api_router.include_router(curriculum_router)
 api_router.include_router(student_router)
 api_router.include_router(assessment_router)

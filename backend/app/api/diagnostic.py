@@ -1,6 +1,8 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import ensure_student_access, get_current_user
+from app.models.student import User
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
@@ -47,7 +49,15 @@ def get_db():
 def start_diagnostic(
     request: DiagnosticStartRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     student = db.get(
         StudentProfile,
         request.student_id,
@@ -179,7 +189,15 @@ def start_diagnostic(
 def submit_diagnostic_answer(
     request: DiagnosticSubmitRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     student = db.get(
         StudentProfile,
         request.student_id,

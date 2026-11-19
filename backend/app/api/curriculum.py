@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import get_current_user, require_staff
+from app.models.student import User
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
@@ -48,6 +50,7 @@ def get_db():
 def create_subject(
     subject: SubjectCreate,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     existing_subject = (
         db.query(Subject)
@@ -79,6 +82,7 @@ def create_subject(
 )
 def get_subjects(
     db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
 ):
     return db.query(Subject).order_by(Subject.id).all()
 
@@ -92,6 +96,7 @@ def create_concept(
     subject_id: int,
     concept: ConceptCreate,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     subject = db.get(Subject, subject_id)
 
@@ -122,6 +127,7 @@ def create_concept(
 def get_concepts(
     subject_id: int,
     db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
 ):
     subject = db.get(Subject, subject_id)
 
@@ -147,6 +153,7 @@ def get_concepts(
 def generate_new_curriculum(
     request: CurriculumGenerateRequest,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     topic = request.topic.strip()
 

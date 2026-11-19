@@ -7,8 +7,12 @@ vi.mock("./api", () => {
 
   return {
     ApiError,
-    getStudent: vi.fn(),
-    resetStudentCache: vi.fn(),
+    UNAUTHORIZED_EVENT: "tutor:unauthorized",
+    login: vi.fn(),
+    register: vi.fn(),
+    getMe: vi.fn(),
+    listUsers: vi.fn(),
+    updateUser: vi.fn(),
     getHealth: vi.fn(),
     getSubjects: vi.fn(),
     getConcepts: vi.fn(),
@@ -36,17 +40,25 @@ const STUDENT = {
   student_id: 3,
   username: "learner",
   learning_level: "beginner",
+  role: "student",
 };
 
 const CONCEPT_A = { id: 11, name: "Network Devices", description: "Hardware." };
 
+function signedIn(user = { username: "learner", role: "student" }) {
+  localStorage.setItem(
+    "tutor_auth",
+    JSON.stringify({ token: "tok", user })
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 
-  // Most tests start as a returning user whose name is remembered.
-  localStorage.setItem("tutor_profile_name", "learner");
+  // Most tests start as a signed-in learner.
+  signedIn();
 
-  api.getStudent.mockResolvedValue(STUDENT);
+  api.getMe.mockResolvedValue(STUDENT);
   api.getHealth.mockResolvedValue({ status: "ok", llm: "available" });
   api.getSubjects.mockResolvedValue([{ id: 1, name: "Computer Networks" }]);
 });
@@ -58,17 +70,16 @@ async function chooseSubject(user) {
 }
 
 describe("App", () => {
-  it("creates the learner on load and shows the setup screen", async () => {
+  it("loads the signed-in learner and shows the setup screen", async () => {
     render(<App />);
 
     expect(await screen.findByText("AI Tutor Ready")).toBeInTheDocument();
-    expect(api.getStudent).toHaveBeenCalledWith("learner");
-    expect(api.getStudent).toHaveBeenCalledTimes(1);
+    expect(api.getMe).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Computer Networks")).toBeInTheDocument();
   });
 
   it("explains how to start the backend when it is unreachable", async () => {
-    api.getStudent.mockRejectedValue(new Error("Cannot reach the tutor backend."));
+    api.getMe.mockRejectedValue(new Error("Cannot reach the tutor backend."));
 
     render(<App />);
 
@@ -272,6 +283,9 @@ describe("App", () => {
   });
 
   it("uploads study material for the selected subject", async () => {
+    signedIn({ username: "teach", role: "instructor" });
+    api.getMe.mockResolvedValue({ ...STUDENT, role: "instructor" });
+
     api.uploadSubjectMaterial.mockResolvedValue({ chunks_inserted: 6 });
 
     const user = userEvent.setup();
@@ -291,6 +305,9 @@ describe("App", () => {
   });
 
   it("creates a course and selects it", async () => {
+    signedIn({ username: "teach", role: "instructor" });
+    api.getMe.mockResolvedValue({ ...STUDENT, role: "instructor" });
+
     api.generateCourse.mockResolvedValue({
       subject_id: 2,
       subject: "Operating Systems",
@@ -319,94 +336,166 @@ describe("App", () => {
   });
 });
 
-describe("profiles", () => {
+describe("authentication", () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it("asks for a name when no profile is remembered", async () => {
+  const fillSignIn = async (user, name, password) => {
+    await user.type(await screen.findByLabelText(/^username$/i), name);
+    await user.type(screen.getByLabelText(/^password$/i), password);
+  };
+
+  it("shows the sign-in form when nobody is signed in", async () => {
     render(<App />);
 
-    expect(await screen.findByText(/who's learning/i)).toBeInTheDocument();
-    expect(api.getStudent).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText(/^username$/i)).toBeInTheDocument();
+    expect(api.getMe).not.toHaveBeenCalled();
   });
 
-  it("creates a profile and remembers the name", async () => {
-    api.getStudent.mockResolvedValue({
-      ...STUDENT,
-      username: "Sharu",
-      created: true,
+  it("signs in and stores the token", async () => {
+    api.login.mockResolvedValue({
+      access_token: "tok-1",
+      user: { username: "Sharu", role: "student" },
     });
+    api.getMe.mockResolvedValue({ ...STUDENT, username: "Sharu" });
 
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(await screen.findByLabelText(/^name$/i), "  Sharu ");
-    await user.click(screen.getByRole("button", { name: /continue/i }));
+    await fillSignIn(user, "Sharu", "correct-horse");
+    await user.click(screen.getByRole("button", { name: /^sign in/i }));
+
+    expect(await screen.findByText("AI Tutor Ready")).toBeInTheDocument();
+    expect(api.login).toHaveBeenCalledWith("Sharu", "correct-horse");
+    expect(JSON.parse(localStorage.getItem("tutor_auth")).token).toBe("tok-1");
+  });
+
+  it("shows the server's message for a wrong password", async () => {
+    api.login.mockRejectedValue(new Error("Incorrect username or password."));
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await fillSignIn(user, "Sharu", "nope");
+    await user.click(screen.getByRole("button", { name: /^sign in/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Profile created for Sharu."
+      "Incorrect username or password."
     );
-    expect(api.getStudent).toHaveBeenCalledWith("Sharu");
-    expect(localStorage.getItem("tutor_profile_name")).toBe("Sharu");
-    expect(screen.getByTitle("Current profile")).toHaveTextContent("Sharu");
+    expect(localStorage.getItem("tutor_auth")).toBeNull();
   });
 
-  it("welcomes back an existing profile", async () => {
-    api.getStudent.mockResolvedValue({
-      ...STUDENT,
-      username: "Sharu",
-      created: false,
+  it("creates an account", async () => {
+    api.register.mockResolvedValue({
+      access_token: "tok-2",
+      user: { username: "Asha", role: "student" },
     });
+    api.getMe.mockResolvedValue({ ...STUDENT, username: "Asha" });
 
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(await screen.findByLabelText(/^name$/i), "sharu");
-    await user.click(screen.getByRole("button", { name: /continue/i }));
+    await user.click(await screen.findByRole("tab", { name: /create account/i }));
+    await fillSignIn(user, "Asha", "long-enough-pw");
+    await user.type(screen.getByLabelText(/confirm password/i), "long-enough-pw");
+    await user.click(screen.getByRole("button", { name: /^create account/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Welcome back, Sharu."
-    );
+    expect(await screen.findByText("AI Tutor Ready")).toBeInTheDocument();
+    expect(api.register).toHaveBeenCalledWith("Asha", "long-enough-pw");
   });
 
-  it("shows the backend error on the profile form", async () => {
-    api.getStudent.mockRejectedValue(new Error("Cannot reach the tutor backend."));
+  it("rejects a short password or mismatch without calling the server", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("tab", { name: /create account/i }));
+    await fillSignIn(user, "Asha", "short");
+    await user.type(screen.getByLabelText(/confirm password/i), "short");
+    await user.click(screen.getByRole("button", { name: /^create account/i }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(api.register).not.toHaveBeenCalled();
+  });
+
+  it("returns to sign-in when the server rejects the token", async () => {
+    signedIn();
+
+    render(<App />);
+
+    await screen.findByText("AI Tutor Ready");
+
+    window.dispatchEvent(new Event("tutor:unauthorized"));
+
+    expect(await screen.findByLabelText(/^username$/i)).toBeInTheDocument();
+  });
+
+  it("signs out and forgets the token", async () => {
+    signedIn();
 
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(await screen.findByLabelText(/^name$/i), "Sharu");
-    await user.click(screen.getByRole("button", { name: /continue/i }));
+    await user.click(await screen.findByRole("button", { name: /sign out/i }));
+
+    expect(await screen.findByLabelText(/^username$/i)).toBeInTheDocument();
+    expect(localStorage.getItem("tutor_auth")).toBeNull();
+  });
+});
+
+describe("roles", () => {
+  it("hides course creation and uploads from students", async () => {
+    signedIn();
+
+    const { container } = render(<App />);
+
+    await screen.findByText("Computer Networks");
+
+    expect(screen.queryByLabelText(/create a new course/i)).not.toBeInTheDocument();
+    expect(container.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it("does not show user management to students", async () => {
+    signedIn();
+
+    render(<App />);
+
+    await screen.findByText("AI Tutor Ready");
 
     expect(
-      await screen.findByText("Cannot reach the tutor backend.")
-    ).toBeInTheDocument();
-    expect(localStorage.getItem("tutor_profile_name")).toBeNull();
+      screen.queryByRole("button", { name: /manage users/i })
+    ).not.toBeInTheDocument();
   });
 
-  it("does not submit a blank name", async () => {
+  it("lets an admin open user management and change a role", async () => {
+    signedIn({ username: "boss", role: "admin" });
+    api.getMe.mockResolvedValue({
+      ...STUDENT,
+      user_id: 1,
+      username: "boss",
+      role: "admin",
+    });
+    api.listUsers.mockResolvedValue([
+      { id: 1, username: "boss", role: "admin", is_active: true, has_password: true },
+      { id: 2, username: "asha", role: "student", is_active: true, has_password: true },
+    ]);
+    api.updateUser.mockResolvedValue({
+      id: 2,
+      username: "asha",
+      role: "instructor",
+      is_active: true,
+      has_password: true,
+    });
+
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByLabelText(/^name$/i);
-
-    expect(screen.getByRole("button", { name: /continue/i })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: /continue/i }));
-    expect(api.getStudent).not.toHaveBeenCalled();
-  });
-
-  it("switches profile back to the name screen", async () => {
-    localStorage.setItem("tutor_profile_name", "learner");
-
-    const user = userEvent.setup();
-    render(<App />);
-
-    await user.click(
-      await screen.findByRole("button", { name: /switch profile/i })
+    await user.click(await screen.findByRole("button", { name: /manage users/i }));
+    await user.selectOptions(
+      await screen.findByLabelText("Role for asha"),
+      "instructor"
     );
 
-    expect(await screen.findByText(/who's learning/i)).toBeInTheDocument();
-    expect(localStorage.getItem("tutor_profile_name")).toBeNull();
+    expect(api.updateUser).toHaveBeenCalledWith(2, { role: "instructor" });
   });
 });

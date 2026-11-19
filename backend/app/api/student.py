@@ -1,5 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from app.api.deps import (
+    STAFF_ROLES,
+    ensure_student_access,
+    get_current_user,
+    require_staff,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -15,11 +20,8 @@ from app.schemas.student import (
     LearningLevelUpdate,
     MasteryResponse,
     MasteryUpdate,
-    StudentBootstrapRequest,
     StudentBootstrapResponse,
     StudentProfileResponse,
-    UserCreate,
-    UserResponse,
 )
 
 
@@ -38,57 +40,8 @@ def get_db():
         db.close()
 
 
-@router.post(
-    "/users",
-    response_model=UserResponse,
-    status_code=201,
-)
-def create_user(
-    user: UserCreate,
-    db: Session = Depends(get_db),
-):
-    existing_user = (
-        db.query(User)
-        .filter(User.username == user.username)
-        .first()
-    )
-
-    if existing_user:
-        raise HTTPException(
-            status_code=409,
-            detail="Username already exists",
-        )
-
-    new_user = User(
-        username=user.username,
-    )
-
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-
-    return new_user
-
-
-def _get_or_create_student(db: Session, username: str):
-    """Return (user, profile, created) for a username.
-
-    The lookup ignores case, so "Sharu" and "sharu" are the same profile.
-    """
-
-    created = False
-
-    user = (
-        db.query(User)
-        .filter(func.lower(User.username) == username.lower())
-        .first()
-    )
-
-    if user is None:
-        user = User(username=username)
-        db.add(user)
-        db.flush()
-        created = True
+def get_or_create_profile(db: Session, user: User) -> StudentProfile:
+    """Return the user's learner profile, creating it on first use."""
 
     profile = (
         db.query(StudentProfile)
@@ -103,52 +56,46 @@ def _get_or_create_student(db: Session, username: str):
         )
         db.add(profile)
 
-    db.commit()
-    db.refresh(user)
-    db.refresh(profile)
+        try:
+            db.commit()
 
-    return user, profile, created
+        except IntegrityError:
+            # A simultaneous request created it first.
+            db.rollback()
+            profile = (
+                db.query(StudentProfile)
+                .filter(StudentProfile.user_id == user.id)
+                .one()
+            )
+
+        else:
+            db.refresh(profile)
+
+    return profile
 
 
-@router.post(
-    "/bootstrap",
+@router.get(
+    "/me",
     response_model=StudentBootstrapResponse,
 )
-def bootstrap_student(
-    request: StudentBootstrapRequest,
+def get_my_student(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Return the student for a username, creating it on first use.
+    """Identifiers the frontend needs for the signed-in user.
 
-    This is idempotent, so the frontend can call it on every page load
-    instead of assuming that a particular student id already exists.
+    The learner profile is created on first use, so staff accounts can
+    also try the tutor.
     """
 
-    username = request.username.strip()
-
-    if not username:
-        raise HTTPException(
-            status_code=400,
-            detail="Username cannot be empty.",
-        )
-
-    try:
-        user, profile, created = _get_or_create_student(db, username)
-
-    except IntegrityError:
-        # Two simultaneous first requests (for example React StrictMode
-        # in development) can race on the unique constraints. The other
-        # request won, so read what it created.
-        db.rollback()
-        user, profile, _ = _get_or_create_student(db, username)
-        created = False
+    profile = get_or_create_profile(db, current_user)
 
     return {
-        "user_id": user.id,
+        "user_id": current_user.id,
         "student_id": profile.id,
-        "username": user.username,
+        "username": current_user.username,
+        "role": current_user.role,
         "learning_level": profile.learning_level,
-        "created": created,
     }
 
 
@@ -160,7 +107,15 @@ def update_learning_level(
     student_id: int,
     update: LearningLevelUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        student_id,
+        allow_staff=False,
+    )
+
     student = db.get(StudentProfile, student_id)
 
     if not student:
@@ -188,7 +143,14 @@ def update_learning_level(
 def create_student_profile(
     user_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to do that.",
+        )
+
     user = db.get(User, user_id)
 
     if not user:
@@ -235,7 +197,14 @@ def create_student_profile(
 def get_student_profile(
     user_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if user_id != current_user.id and current_user.role not in STAFF_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to do that.",
+        )
+
     profile = (
         db.query(StudentProfile)
         .filter(StudentProfile.user_id == user_id)
@@ -359,6 +328,7 @@ def update_mastery(
     student_id: int,
     mastery: MasteryUpdate,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     student = db.get(StudentProfile, student_id)
 
@@ -409,7 +379,15 @@ def update_mastery(
 def get_mastery(
     student_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        student_id,
+        allow_staff=True,
+    )
+
     student = db.get(StudentProfile, student_id)
 
     if not student:

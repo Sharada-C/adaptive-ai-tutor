@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     llm_model: str = "llama3.2:3b"
     embedding_model: str = "nomic-embed-text"
 
+    # Authentication. SECRET_KEY signs login tokens. When it is not set a
+    # random key is generated at start-up, which is safe but logs everyone
+    # out whenever the server restarts. Set a long random value in .env.
+    secret_key: str = ""
+    access_token_minutes: int = 720
+
+    # Optional: create (or promote) this admin account at start-up.
+    admin_username: str = ""
+    admin_password: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [

@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "./api";
+import { loadAuth, saveAuth } from "./authStorage";
 
 function mockFetch(status, body, { json = true } = {}) {
   const text = json ? JSON.stringify(body) : body;
@@ -12,10 +13,6 @@ function mockFetch(status, body, { json = true } = {}) {
 }
 
 describe("api client", () => {
-  beforeEach(() => {
-    api.resetStudentCache();
-  });
-
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -25,7 +22,10 @@ describe("api client", () => {
 
     await api.getSubjects();
 
-    expect(fetch).toHaveBeenCalledWith("/api/subjects", { method: "GET" });
+    expect(fetch).toHaveBeenCalledWith("/api/subjects", {
+      method: "GET",
+      headers: {},
+    });
   });
 
   it("sends JSON bodies with a content type", async () => {
@@ -74,7 +74,7 @@ describe("api client", () => {
     expect(options.body).toBeInstanceOf(FormData);
     expect(options.body.get("subject_id")).toBe("5");
     expect(options.body.get("file")).toBe(file);
-    expect(options.headers).toBeUndefined();
+    expect(options.headers["Content-Type"]).toBeUndefined();
   });
 
   it("surfaces a string detail from FastAPI", async () => {
@@ -108,35 +108,76 @@ describe("api client", () => {
     await expect(api.getSubjects()).rejects.toThrow(/Cannot reach the tutor/);
   });
 
-  it("shares one bootstrap request between concurrent callers", async () => {
-    mockFetch(200, { student_id: 1, user_id: 1 });
+  it("sends the saved token as a bearer header", async () => {
+    saveAuth({ token: "abc123", user: { username: "sharu" } });
+    mockFetch(200, []);
 
-    await Promise.all([api.getStudent("Sharu"), api.getStudent("sharu")]);
+    await api.getSubjects();
 
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
-      username: "Sharu",
+    expect(fetch.mock.calls[0][1].headers.Authorization).toBe(
+      "Bearer abc123"
+    );
+  });
+
+  it("does not send a token when signing in", async () => {
+    saveAuth({ token: "old", user: { username: "sharu" } });
+    mockFetch(200, { access_token: "new", user: {} });
+
+    await api.login("sharu", "secret-pass");
+
+    const [url, options] = fetch.mock.calls[0];
+
+    expect(url).toBe("/api/auth/login");
+    expect(options.headers.Authorization).toBeUndefined();
+    expect(JSON.parse(options.body)).toEqual({
+      username: "sharu",
+      password: "secret-pass",
     });
   });
 
-  it("sends a new request when the profile name changes", async () => {
-    mockFetch(200, { student_id: 1, user_id: 1 });
+  it("registers through /auth/register", async () => {
+    mockFetch(201, { access_token: "t", user: {} });
 
-    await api.getStudent("Sharu");
-    await api.getStudent("Asha");
+    await api.register("asha", "secret-pass");
 
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0][0]).toBe("/api/auth/register");
   });
 
-  it("retries bootstrap after a failure", async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError("down"));
+  it("clears the session and signals when the token is rejected", async () => {
+    saveAuth({ token: "expired", user: { username: "sharu" } });
+    mockFetch(401, { detail: "Your session has expired." });
 
-    await expect(api.getStudent("Sharu")).rejects.toThrow();
+    const handler = vi.fn();
+    window.addEventListener(api.UNAUTHORIZED_EVENT, handler);
 
-    mockFetch(200, { student_id: 1, user_id: 1 });
+    await expect(api.getSubjects()).rejects.toMatchObject({ status: 401 });
 
-    await expect(api.getStudent("Sharu")).resolves.toMatchObject({
-      student_id: 1,
-    });
+    window.removeEventListener(api.UNAUTHORIZED_EVENT, handler);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(loadAuth()).toBeNull();
+  });
+
+  it("treats a wrong password as an error, not an expired session", async () => {
+    saveAuth({ token: "still-good", user: { username: "sharu" } });
+    mockFetch(401, { detail: "Incorrect username or password." });
+
+    const handler = vi.fn();
+    window.addEventListener(api.UNAUTHORIZED_EVENT, handler);
+
+    await expect(api.login("sharu", "wrong")).rejects.toThrow(
+      "Incorrect username or password."
+    );
+
+    window.removeEventListener(api.UNAUTHORIZED_EVENT, handler);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(loadAuth()?.token).toBe("still-good");
+  });
+
+  it("shows a permission error from the server", async () => {
+    mockFetch(403, { detail: "You do not have permission to do that." });
+
+    await expect(api.listUsers()).rejects.toMatchObject({ status: 403 });
   });
 });

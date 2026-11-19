@@ -3,17 +3,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class UserCreate(BaseModel):
-    username: str
-
-
-class UserResponse(BaseModel):
-    id: int
-    username: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class SubjectMasteryResponse(BaseModel):
     subject_id: int
     subject_name: str
@@ -55,14 +44,6 @@ class MasteryResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class StudentBootstrapRequest(BaseModel):
-    username: str = Field(
-        default="learner",
-        min_length=1,
-        max_length=100,
-    )
-
-
 class StudentBootstrapResponse(BaseModel):
     """Identifiers the frontend needs to talk to the rest of the API.
 
@@ -74,8 +55,8 @@ class StudentBootstrapResponse(BaseModel):
     user_id: int
     student_id: int
     username: str
+    role: str
     learning_level: str
-    created: bool = False
 
 
 class LearningLevelUpdate(BaseModel):

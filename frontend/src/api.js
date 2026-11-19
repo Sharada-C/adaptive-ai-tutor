@@ -13,6 +13,12 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
   ""
 );
 
+import { clearAuth, loadAuth } from "./authStorage";
+
+// Fired when the server rejects the saved token (expired, or the
+// account was removed or deactivated) so the app can return to sign-in.
+export const UNAUTHORIZED_EVENT = "tutor:unauthorized";
+
 export class ApiError extends Error {
   constructor(message, status = 0) {
     super(message);
@@ -44,11 +50,20 @@ function errorMessage(data, response) {
   return `Request failed (${response.status}).`;
 }
 
-async function request(path, { method = "GET", json, formData } = {}) {
-  const options = { method };
+async function request(
+  path,
+  { method = "GET", json, formData, authenticated = true } = {}
+) {
+  const options = { method, headers: {} };
+
+  const token = authenticated ? loadAuth()?.token : null;
+
+  if (token) {
+    options.headers.Authorization = `Bearer ${token}`;
+  }
 
   if (json !== undefined) {
-    options.headers = { "Content-Type": "application/json" };
+    options.headers["Content-Type"] = "application/json";
     options.body = JSON.stringify(json);
   } else if (formData !== undefined) {
     // The browser sets the multipart boundary header itself.
@@ -80,6 +95,11 @@ async function request(path, { method = "GET", json, formData } = {}) {
   }
 
   if (!response.ok) {
+    if (response.status === 401 && token) {
+      clearAuth();
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    }
+
     throw new ApiError(errorMessage(data, response), response.status);
   }
 
@@ -90,35 +110,38 @@ async function request(path, { method = "GET", json, formData } = {}) {
 // Student
 // ------------------------------------------------------------
 
-let studentPromise = null;
-let studentPromiseFor = "";
+// Sign up creates a learner account; sign in returns a token. Neither
+// sends a token, and a failed sign-in must not look like an expired
+// session, so they bypass the 401 handling above.
+export const register = (username, password) =>
+  request("/auth/register", {
+    method: "POST",
+    json: { username, password },
+    authenticated: false,
+  });
 
-// Opens the profile for a username, creating it when the name is new.
-// Concurrent calls for the same name share one request, so React
-// StrictMode's double effect in development does not send two.
-export function getStudent(username) {
-  const name = username.trim();
-  const key = name.toLowerCase();
+export const login = (username, password) =>
+  request("/auth/login", {
+    method: "POST",
+    json: { username, password },
+    authenticated: false,
+  });
 
-  if (!studentPromise || studentPromiseFor !== key) {
-    studentPromiseFor = key;
+// The ids the rest of the API needs for the signed-in user.
+export const getMe = () => request("/students/me");
 
-    studentPromise = request("/students/bootstrap", {
-      method: "POST",
-      json: { username: name },
-    }).catch((error) => {
-      studentPromise = null;
-      throw error;
-    });
-  }
+// ------------------------------------------------------------
+// Admin
+// ------------------------------------------------------------
 
-  return studentPromise;
-}
+export const listUsers = () => request("/admin/users");
 
-export function resetStudentCache() {
-  studentPromise = null;
-  studentPromiseFor = "";
-}
+export const updateUser = (userId, changes) =>
+  request(`/admin/users/${userId}`, { method: "PATCH", json: changes });
+
+// ------------------------------------------------------------
+// Student
+// ------------------------------------------------------------
 
 export const setLearningLevel = (studentId, learningLevel) =>
   request(`/students/${studentId}/level`, {

@@ -988,3 +988,72 @@ select:focus {
 .text-input:focus {
   border-color: #7d8798;
 }
+
+.profile-chip .role-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8eefc;
+  color: #1d3a8a;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #e3e8ef;
+}
+
+.auth-tab {
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.auth-tab.selected {
+  color: #111827;
+  border-bottom-color: #111827;
+}
+
+.admin-card {
+  max-width: 900px;
+}
+
+.user-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+.user-table th,
+.user-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid #e3e8ef;
+  vertical-align: middle;
+}
+
+.user-note {
+  color: #b45309;
+}
+
+.user-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.user-actions .text-input {
+  width: 150px;
+  padding: 6px 8px;
+}

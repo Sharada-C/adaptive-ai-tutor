@@ -25,6 +25,7 @@ export default function SetupScreen({
   starting,
   onSkip,
   loadingLesson,
+  canManageCourses = false,
 }) {
   const subjectUnavailable =
     !ready || loadingSubjects || !!subjectError || !subjectId;
@@ -41,8 +42,7 @@ export default function SetupScreen({
         </h2>
 
         <p>
-          Pick a course or create one on any topic, then add your own study
-          material. The tutor assesses your knowledge and adapts the learning
+          Pick a course and the tutor assesses your knowledge and adapts the learning
           path based on your progress.
         </p>
       </section>
@@ -85,41 +85,45 @@ export default function SetupScreen({
           )}
         </div>
 
-        <div className="form-section">
-          <label htmlFor="course-topic">Or create a new course</label>
+        {canManageCourses && (
+          <>
+            <div className="form-section">
+              <label htmlFor="course-topic">Or create a new course</label>
 
-          <form
-            className="inline-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              onGenerateCourse();
-            }}
-          >
-            <input
-              id="course-topic"
-              type="text"
-              maxLength={100}
-              placeholder="e.g. Operating Systems"
-              value={courseTopic}
-              onChange={(event) => onCourseTopicChange(event.target.value)}
-              disabled={generating || !ready}
-            />
+              <form
+                className="inline-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onGenerateCourse();
+                }}
+              >
+                <input
+                  id="course-topic"
+                  type="text"
+                  maxLength={100}
+                  placeholder="e.g. Operating Systems"
+                  value={courseTopic}
+                  onChange={(event) => onCourseTopicChange(event.target.value)}
+                  disabled={generating || !ready}
+                />
 
-            <button
-              type="submit"
-              className="secondary-button"
-              disabled={!courseTopic.trim() || generating || !ready}
-            >
-              {generating ? "Generating..." : "Generate course"}
-            </button>
-          </form>
+                <button
+                  type="submit"
+                  className="secondary-button"
+                  disabled={!courseTopic.trim() || generating || !ready}
+                >
+                  {generating ? "Generating..." : "Generate course"}
+                </button>
+              </form>
 
-          {generating && (
-            <p className="hint">
-              Building your course with the AI model. This can take a minute.
-            </p>
-          )}
-        </div>
+              {generating && (
+                <p className="hint">
+                  Building your course with the AI model. This can take a minute.
+                </p>
+              )}
+            </div>
+          </>
+        )}
 
         <div className="form-section">
           <label>What's your current level?</label>
@@ -144,56 +148,65 @@ export default function SetupScreen({
           </div>
         </div>
 
-        <div className="divider">
-          <span>STUDY MATERIAL</span>
-        </div>
+        {canManageCourses ? (
+          <>
+            <div className="divider">
+              <span>STUDY MATERIAL</span>
+            </div>
 
-        <div className="form-section">
-          <label>Learn from your own material</label>
+            <div className="form-section">
+              <label>Learn from your own material</label>
 
-          <label className={`upload-area ${subjectUnavailable ? "disabled" : ""}`}>
-            <input
-              type="file"
-              accept=".pdf,.txt,.md,.markdown"
-              disabled={uploading || subjectUnavailable}
-              onChange={(event) => {
-                const file = event.target.files[0] || null;
+              <label className={`upload-area ${subjectUnavailable ? "disabled" : ""}`}>
+                <input
+                  type="file"
+                  accept=".pdf,.txt,.md,.markdown"
+                  disabled={uploading || subjectUnavailable}
+                  onChange={(event) => {
+                    const file = event.target.files[0] || null;
 
-                // Allow choosing the same file again later.
-                event.target.value = "";
+                    // Allow choosing the same file again later.
+                    event.target.value = "";
 
-                if (file) {
-                  onMaterialSelected(file);
-                }
-              }}
-            />
+                    if (file) {
+                      onMaterialSelected(file);
+                    }
+                  }}
+                />
 
-            <span className="upload-icon">📄</span>
+                <span className="upload-icon">📄</span>
 
-            <span className="upload-title">
-              {uploading
-                ? "Adding material..."
-                : materialName || "Upload your study material"}
-            </span>
+                <span className="upload-title">
+                  {uploading
+                    ? "Adding material..."
+                    : materialName || "Upload your study material"}
+                </span>
 
-            <span className="upload-description">
-              {subjectUnavailable
-                ? "Select a subject first"
-                : "PDF, TXT or Markdown • Added to the selected subject"}
-            </span>
-          </label>
+                <span className="upload-description">
+                  {subjectUnavailable
+                    ? "Select a subject first"
+                    : "PDF, TXT or Markdown • Added to the selected subject"}
+                </span>
+              </label>
 
-          {materialStatus && (
-            <p className={`upload-status upload-status-${materialStatus.type}`}>
-              {materialStatus.message}
-            </p>
-          )}
+              {materialStatus && (
+                <p className={`upload-status upload-status-${materialStatus.type}`}>
+                  {materialStatus.message}
+                </p>
+              )}
 
+              <p className="hint">
+                The tutor only teaches from study material. A course you create
+                needs some before the diagnostic and lessons can start.
+              </p>
+            </div>
+          </>
+        ) : (
           <p className="hint">
-            The tutor only teaches from study material. A course you create
-            needs some before the diagnostic and lessons can start.
+            Courses and study material are added by your instructor. Pick a
+            course above to begin.
           </p>
-        </div>
+        )}
 
         <button
           type="button"

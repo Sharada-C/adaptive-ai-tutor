@@ -11,13 +11,14 @@ from app.db.database import SessionLocal
 from app.main import app
 from app.models import StudentProfile, User
 from app.rag import retriever
+from tests.conftest import token_for
 
 
 client = TestClient(app)
 
 
 # ---------------------------------------------------------------------
-# Student bootstrap
+# Signed-in student
 # ---------------------------------------------------------------------
 
 
@@ -42,115 +43,55 @@ def _delete_user(username: str) -> None:
         db.close()
 
 
-def test_bootstrap_creates_student_and_is_idempotent():
-    username = f"pytest_bootstrap_{uuid.uuid4().hex[:8]}"
+def test_me_returns_the_ids_the_frontend_needs(test_student):
+    response = client.get("/students/me")
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert body["student_id"] == test_student
+    assert body["username"] == "pytest_user"
+    assert body["role"] == "student"
+    assert body["learning_level"] in {"beginner", "intermediate", "advanced"}
+    assert body["user_id"] > 0
+
+
+def test_me_creates_a_missing_profile():
+    # Staff accounts have no learner profile until they first need one.
+    username = f"pytest_staff_{uuid.uuid4().hex[:8]}"
+    headers = token_for(username, "instructor")
 
     try:
-        first = client.post(
-            "/students/bootstrap",
-            json={"username": username},
-        )
+        response = client.get("/students/me", headers=headers)
 
-        assert first.status_code == 200
-
-        created = first.json()
-
-        assert created["username"] == username
-        assert created["learning_level"] == "beginner"
-        assert created["student_id"] > 0
-        assert created["user_id"] > 0
-
-        second = client.post(
-            "/students/bootstrap",
-            json={"username": username},
-        )
-
-        assert second.status_code == 200
-        assert second.json() == {**created, "created": False}
+        assert response.status_code == 200
+        assert response.json()["student_id"] > 0
+        assert response.json()["role"] == "instructor"
 
     finally:
         _delete_user(username)
 
 
-def test_bootstrap_reports_whether_profile_was_created():
-    username = f"pytest_bootstrap_{uuid.uuid4().hex[:8]}"
+def test_me_requires_sign_in():
+    response = TestClient(app).get("/students/me")
 
-    try:
-        first = client.post(
-            "/students/bootstrap",
-            json={"username": username},
-        ).json()
-
-        second = client.post(
-            "/students/bootstrap",
-            json={"username": username},
-        ).json()
-
-        assert first["created"] is True
-        assert second["created"] is False
-
-    finally:
-        _delete_user(username)
+    assert response.status_code == 401
 
 
-def test_bootstrap_ignores_case_and_surrounding_spaces():
-    username = f"PyTest_Case_{uuid.uuid4().hex[:8]}"
+def test_my_data_works_with_other_endpoints(test_student):
+    mastery = client.get(f"/students/{test_student}/mastery")
 
-    try:
-        created = client.post(
-            "/students/bootstrap",
-            json={"username": username},
-        ).json()
+    assert mastery.status_code == 200
+    assert isinstance(mastery.json(), list)
 
-        again = client.post(
-            "/students/bootstrap",
-            json={"username": f"  {username.lower()}  "},
-        ).json()
+    me = client.get("/students/me").json()
 
-        assert again["student_id"] == created["student_id"]
-        assert again["created"] is False
-        # The name keeps the capitalisation it was created with.
-        assert again["username"] == username
+    # The profile endpoint is keyed by *user* id, not student id.
+    profile = client.get(f"/students/{me['user_id']}/profile")
 
-    finally:
-        _delete_user(username)
-
-
-def test_bootstrapped_student_works_with_other_endpoints():
-    username = f"pytest_bootstrap_{uuid.uuid4().hex[:8]}"
-
-    try:
-        student = client.post(
-            "/students/bootstrap",
-            json={"username": username},
-        ).json()
-
-        mastery = client.get(
-            f"/students/{student['student_id']}/mastery"
-        )
-
-        assert mastery.status_code == 200
-        assert mastery.json() == []
-
-        # The profile endpoint is keyed by *user* id, not student id.
-        profile = client.get(
-            f"/students/{student['user_id']}/profile"
-        )
-
-        assert profile.status_code == 200
-        assert profile.json()["id"] == student["student_id"]
-
-    finally:
-        _delete_user(username)
-
-
-def test_bootstrap_rejects_blank_username():
-    response = client.post(
-        "/students/bootstrap",
-        json={"username": "   "},
-    )
-
-    assert response.status_code == 400
+    assert profile.status_code == 200
+    assert profile.json()["id"] == test_student
 
 
 # ---------------------------------------------------------------------
@@ -197,12 +138,13 @@ def test_update_learning_level_rejects_unknown_level(test_student):
 
 
 def test_update_learning_level_unknown_student():
+    # Not the caller's profile, so it is refused rather than "not found".
     response = client.patch(
         "/students/999999/level",
         json={"learning_level": "beginner"},
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 403
 
 
 # ---------------------------------------------------------------------

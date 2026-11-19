@@ -4,8 +4,9 @@ import * as api from "./api";
 import { useSessionState } from "./hooks/useSessionState";
 import Header from "./components/Header";
 import Notice from "./components/Notice";
-import ProfileScreen from "./screens/ProfileScreen";
-import { forgetUsername, loadUsername, saveUsername } from "./profileStorage";
+import AuthScreen from "./screens/AuthScreen";
+import AdminScreen from "./screens/AdminScreen";
+import { clearAuth, loadAuth, saveAuth } from "./authStorage";
 import SetupScreen from "./screens/SetupScreen";
 import DiagnosticScreen from "./screens/DiagnosticScreen";
 import LessonScreen from "./screens/LessonScreen";
@@ -99,10 +100,12 @@ function Tutor({
   student,
   onRestart,
   onStudentChange,
-  onSwitchProfile,
+  onSignOut,
   initialNotice,
 }) {
   const studentId = student.student_id;
+  const isStaff = student.role === "instructor" || student.role === "admin";
+  const isAdmin = student.role === "admin";
 
   // ----------------------------------------------------------
   // Backend health
@@ -659,7 +662,14 @@ function Tutor({
 
   let content;
 
-  if (screen === "progress") {
+  if (screen === "admin" && isAdmin) {
+    content = (
+      <AdminScreen
+        currentUserId={student.user_id}
+        onBack={() => setScreen("setup")}
+      />
+    );
+  } else if (screen === "progress") {
     content = (
       <ProgressScreen
         subject={subjects.find(
@@ -748,6 +758,7 @@ function Tutor({
         starting={starting}
         onSkip={handleSkipDiagnostic}
         loadingLesson={loadingLesson}
+        canManageCourses={isStaff}
       />
     );
   }
@@ -758,9 +769,13 @@ function Tutor({
         status={status.text}
         statusState={status.state}
         profileName={student.username}
-        onSwitchProfile={onSwitchProfile}
+        role={student.role}
+        onSignOut={onSignOut}
+        onShowAdmin={
+          isAdmin && screen !== "admin" ? () => setScreen("admin") : undefined
+        }
         onShowProgress={
-          activeSubjectId && screen !== "progress"
+          activeSubjectId && screen !== "progress" && screen !== "admin"
             ? () => setScreen("progress")
             : undefined
         }
@@ -775,27 +790,53 @@ function Tutor({
 }
 
 // ============================================================
-// APP (identifies the learner, then hands over to Tutor)
+// APP (signs the user in, then hands over to Tutor)
 // ============================================================
 
 function App() {
-  const [username, setUsername] = useState(loadUsername);
+  const [auth, setAuth] = useState(loadAuth);
   const [student, setStudent] = useState(null);
   const [welcome, setWelcome] = useState(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [session, setSession] = useState(0);
 
-  // Reopen the remembered profile (for example after a page refresh).
+  const token = auth?.token;
+
+  const resetToSignIn = useCallback(() => {
+    clearSavedSession();
+    clearAuth();
+
+    setWelcome(null);
+    setError("");
+    setStudent(null);
+    setAuth(null);
+    setSession((value) => value + 1);
+  }, []);
+
+  // The server rejected the saved token (expired, or the account was
+  // removed or deactivated): go back to the sign-in form.
   useEffect(() => {
-    if (!username || student) {
+    const onUnauthorized = () => {
+      resetToSignIn();
+    };
+
+    window.addEventListener(api.UNAUTHORIZED_EVENT, onUnauthorized);
+
+    return () =>
+      window.removeEventListener(api.UNAUTHORIZED_EVENT, onUnauthorized);
+  }, [resetToSignIn]);
+
+  // Load the learner behind the token (also after a page refresh).
+  useEffect(() => {
+    if (!token) {
       return undefined;
     }
 
     let cancelled = false;
 
     api
-      .getStudent(username)
+      .getMe()
       .then((data) => {
         if (cancelled) return;
 
@@ -803,46 +844,39 @@ function App() {
         setStudent(data);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
+        // A 401 is handled by the unauthorized listener above.
+        if (!cancelled && err.status !== 401) setError(err.message);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [username, student, attempt]);
+  }, [token, attempt]);
 
-  // Create a profile or open an existing one. Errors are thrown so the
-  // profile screen can show them next to the form.
-  const logIn = async (name) => {
-    const data = await api.getStudent(name);
+  // Errors are thrown so the form can show them next to the fields.
+  const completeSignIn = (data, message) => {
+    const next = { token: data.access_token, user: data.user };
 
-    adoptSession(data.student_id);
-    saveUsername(data.username);
-
-    setWelcome({
-      type: "success",
-      message: data.created
-        ? `Profile created for ${data.username}.`
-        : `Welcome back, ${data.username}.`,
-    });
-    setUsername(data.username);
-    setStudent(data);
+    saveAuth(next);
+    setStudent(null);
+    setError("");
+    setWelcome({ type: "success", message });
+    setAuth(next);
   };
 
-  const switchProfile = () => {
-    clearSavedSession();
-    forgetUsername();
-    api.resetStudentCache();
+  const signIn = async (username, password) => {
+    const data = await api.login(username, password);
 
-    setWelcome(null);
-    setError("");
-    setStudent(null);
-    setUsername("");
-    setSession((value) => value + 1);
+    completeSignIn(data, `Welcome back, ${data.user.username}.`);
+  };
+
+  const register = async (username, password) => {
+    const data = await api.register(username, password);
+
+    completeSignIn(data, `Account created. Welcome, ${data.user.username}.`);
   };
 
   const retry = () => {
-    api.resetStudentCache();
     setError("");
     setAttempt((value) => value + 1);
   };
@@ -854,12 +888,12 @@ function App() {
     setSession((value) => value + 1);
   };
 
-  if (!username) {
+  if (!token) {
     return (
       <div className="app">
-        <Header status="Choose a profile" statusState="warn" />
+        <Header status="Sign in" statusState="warn" />
 
-        <ProfileScreen onSubmit={logIn} />
+        <AuthScreen onSignIn={signIn} onRegister={register} />
       </div>
     );
   }
@@ -897,9 +931,9 @@ function App() {
             <button
               type="button"
               className="skip-diagnostic-button"
-              onClick={switchProfile}
+              onClick={resetToSignIn}
             >
-              Use a different profile
+              Sign out
             </button>
           </section>
         </main>
@@ -913,7 +947,7 @@ function App() {
         <Header status="Connecting..." statusState="warn" />
 
         <main className="main-content">
-          <div className="loading-message">Opening your profile...</div>
+          <div className="loading-message">Opening your account...</div>
         </main>
       </div>
     );
@@ -926,7 +960,7 @@ function App() {
       initialNotice={welcome}
       onRestart={restart}
       onStudentChange={setStudent}
-      onSwitchProfile={switchProfile}
+      onSignOut={resetToSignIn}
     />
   );
 }

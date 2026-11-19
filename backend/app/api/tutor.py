@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import ensure_student_access, get_current_user
+from app.models.student import User
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -58,6 +60,7 @@ def retrieve_knowledge(
     concept_id: int,
     subject_id: int | None = None,
     limit: int = 3,
+    _user: User = Depends(get_current_user),
 ):
     """Prioritize concept-specific evidence over subject-wide evidence."""
 
@@ -88,7 +91,15 @@ def retrieve_knowledge(
 def generate_lesson(
     request: LessonRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     try:
         context = build_tutor_context(
             db=db,
@@ -360,7 +371,15 @@ Return only the lesson and one final understanding-check question.
 def reteach(
     request: ReteachRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     try:
         context = build_tutor_context(
             db=db,
