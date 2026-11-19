@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import ensure_student_access, get_current_user
+from app.models.student import User
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
+from app.models.curriculum import Concept
 from app.schemas.quiz import QuizQuestion, QuizRequest
 from app.tutor.context_builder import build_tutor_context
 from app.tutor.quiz_service import generate_quiz
-from app.rag.retriever import retrieve_relevant_chunks
+from app.rag.retriever import retrieve_with_subject_fallback
 
 
 router = APIRouter(
@@ -30,7 +33,15 @@ def get_db():
 def create_quiz(
     request: QuizRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     try:
         context = build_tutor_context(
             db=db,
@@ -44,19 +55,24 @@ def create_quiz(
             detail=str(error),
         )
 
+    concept = db.get(Concept, request.concept_id)
+
     # ---------------------------------------------------------
-    # Retrieve concept-specific knowledge using pgvector
+    # Retrieve knowledge using pgvector. Concept-specific chunks
+    # are preferred; subject-wide material is used as a fallback
+    # so that a single uploaded document can ground the quiz.
     # ---------------------------------------------------------
-    knowledge_chunks = retrieve_relevant_chunks(
+    knowledge_chunks = retrieve_with_subject_fallback(
         db=db,
         query=context["concept"],
         concept_id=request.concept_id,
+        subject_id=concept.subject_id if concept else None,
         limit=3,
     )
 
     knowledge_text = "\n\n".join(
-        f"[Knowledge {index}]\n{chunk.content}"
-        for index, chunk in enumerate(
+        f"[Knowledge {index}]\n{item['chunk'].content}"
+        for index, item in enumerate(
             knowledge_chunks,
             start=1,
         )
@@ -68,11 +84,21 @@ def create_quiz(
     # ---------------------------------------------------------
     # Generate grounded adaptive quiz
     # ---------------------------------------------------------
-    return generate_quiz(
-        concept=context["concept"],
-        concept_description=context["concept_description"],
-        student_level=context["student_level"],
-        mastery_score=context["mastery_score"],
-        knowledge_text=knowledge_text,
-        misconceptions=context["misconceptions"],
-    )
+    try:
+        return generate_quiz(
+            concept=context["concept"],
+            concept_description=context["concept_description"],
+            student_level=context["student_level"],
+            mastery_score=context["mastery_score"],
+            knowledge_text=knowledge_text,
+            misconceptions=context["misconceptions"],
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A grounded quiz question could not be generated "
+                f"for this concept: {error}"
+            ),
+        )

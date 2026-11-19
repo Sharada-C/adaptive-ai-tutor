@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text, Float
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text, Float, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -14,6 +14,31 @@ class User(Base):
         String(100),
         unique=True,
         nullable=False,
+    )
+
+    # NULL for accounts created before passwords existed; they cannot log
+    # in until an admin sets a password.
+    password_hash: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    role: Mapped[str] = mapped_column(
+        String(20),
+        default="student",
+        server_default="student",
+        nullable=False,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=text("true"),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_users_username_lower", func.lower(username), unique=True),
     )
 
 

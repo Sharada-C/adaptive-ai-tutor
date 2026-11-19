@@ -1,4 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import (
+    STAFF_ROLES,
+    ensure_student_access,
+    get_current_user,
+    require_staff,
+)
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.curriculum import Concept, Subject
@@ -9,11 +16,12 @@ from app.models.student import (
     User,
 )
 from app.schemas.student import (
+    LearningLevelResponse,
+    LearningLevelUpdate,
     MasteryResponse,
     MasteryUpdate,
+    StudentBootstrapResponse,
     StudentProfileResponse,
-    UserCreate,
-    UserResponse,
 )
 
 
@@ -32,36 +40,99 @@ def get_db():
         db.close()
 
 
-@router.post(
-    "/users",
-    response_model=UserResponse,
-    status_code=201,
-)
-def create_user(
-    user: UserCreate,
-    db: Session = Depends(get_db),
-):
-    existing_user = (
-        db.query(User)
-        .filter(User.username == user.username)
+def get_or_create_profile(db: Session, user: User) -> StudentProfile:
+    """Return the user's learner profile, creating it on first use."""
+
+    profile = (
+        db.query(StudentProfile)
+        .filter(StudentProfile.user_id == user.id)
         .first()
     )
 
-    if existing_user:
-        raise HTTPException(
-            status_code=409,
-            detail="Username already exists",
+    if profile is None:
+        profile = StudentProfile(
+            user_id=user.id,
+            learning_level="beginner",
         )
+        db.add(profile)
 
-    new_user = User(
-        username=user.username,
+        try:
+            db.commit()
+
+        except IntegrityError:
+            # A simultaneous request created it first.
+            db.rollback()
+            profile = (
+                db.query(StudentProfile)
+                .filter(StudentProfile.user_id == user.id)
+                .one()
+            )
+
+        else:
+            db.refresh(profile)
+
+    return profile
+
+
+@router.get(
+    "/me",
+    response_model=StudentBootstrapResponse,
+)
+def get_my_student(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Identifiers the frontend needs for the signed-in user.
+
+    The learner profile is created on first use, so staff accounts can
+    also try the tutor.
+    """
+
+    profile = get_or_create_profile(db, current_user)
+
+    return {
+        "user_id": current_user.id,
+        "student_id": profile.id,
+        "username": current_user.username,
+        "role": current_user.role,
+        "learning_level": profile.learning_level,
+    }
+
+
+@router.patch(
+    "/{student_id}/level",
+    response_model=LearningLevelResponse,
+)
+def update_learning_level(
+    student_id: int,
+    update: LearningLevelUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_student_access(
+        db,
+        current_user,
+        student_id,
+        allow_staff=False,
     )
 
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    student = db.get(StudentProfile, student_id)
 
-    return new_user
+    if not student:
+        raise HTTPException(
+            status_code=404,
+            detail="Student profile not found",
+        )
+
+    student.learning_level = update.learning_level
+
+    db.commit()
+    db.refresh(student)
+
+    return {
+        "student_id": student.id,
+        "learning_level": student.learning_level,
+    }
 
 
 @router.post(
@@ -72,7 +143,14 @@ def create_user(
 def create_student_profile(
     user_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to do that.",
+        )
+
     user = db.get(User, user_id)
 
     if not user:
@@ -119,7 +197,14 @@ def create_student_profile(
 def get_student_profile(
     user_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if user_id != current_user.id and current_user.role not in STAFF_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to do that.",
+        )
+
     profile = (
         db.query(StudentProfile)
         .filter(StudentProfile.user_id == user_id)
@@ -243,6 +328,7 @@ def update_mastery(
     student_id: int,
     mastery: MasteryUpdate,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     student = db.get(StudentProfile, student_id)
 
@@ -293,7 +379,15 @@ def update_mastery(
 def get_mastery(
     student_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        student_id,
+        allow_staff=True,
+    )
+
     student = db.get(StudentProfile, student_id)
 
     if not student:

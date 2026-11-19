@@ -1,6 +1,8 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from app.api.deps import require_staff
+from app.models.student import User
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -49,6 +51,7 @@ def get_db():
 def ingest_knowledge(
     request: KnowledgeIngestRequest,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     try:
         inserted = ingest_text_for_concept(
@@ -74,6 +77,7 @@ def upload_knowledge_file(
     concept_id: int = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     try:
         extension = Path(file.filename or "").suffix.lower()
@@ -133,6 +137,7 @@ def upload_knowledge_file(
 def ingest_subject_knowledge(
     request: SubjectKnowledgeIngestRequest,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     try:
         inserted = ingest_text_for_subject(
@@ -163,6 +168,7 @@ def upload_subject_knowledge_file(
     subject_id: int = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     temporary_path = None
 

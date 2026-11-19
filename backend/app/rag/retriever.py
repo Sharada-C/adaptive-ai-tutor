@@ -150,3 +150,39 @@ def retrieve_relevant_chunks_with_scores(
         }
         for chunk, score in results
     ]
+
+def retrieve_with_subject_fallback(
+    db: Session,
+    query: str,
+    concept_id: int,
+    subject_id: int | None = None,
+    limit: int = DEFAULT_LIMIT,
+    similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+) -> list[dict]:
+    """
+    Retrieve evidence for a concept, preferring concept-specific chunks
+    and falling back to subject-wide chunks when none match.
+
+    Material uploaded for a whole subject is stored with ``concept_id``
+    unset, so every consumer of retrieval (lesson, reteach, quiz and
+    diagnostic) must use this fallback to see it.
+    """
+
+    results = retrieve_relevant_chunks_with_scores(
+        db=db,
+        query=query,
+        concept_id=concept_id,
+        limit=limit,
+        similarity_threshold=similarity_threshold,
+    )
+
+    if not results and subject_id is not None:
+        results = retrieve_relevant_chunks_with_scores(
+            db=db,
+            query=query,
+            subject_id=subject_id,
+            limit=limit,
+            similarity_threshold=similarity_threshold,
+        )
+
+    return results

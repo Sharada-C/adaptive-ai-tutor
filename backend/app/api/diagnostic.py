@@ -1,6 +1,8 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import ensure_student_access, get_current_user
+from app.models.student import User
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
@@ -47,7 +49,15 @@ def get_db():
 def start_diagnostic(
     request: DiagnosticStartRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     student = db.get(
         StudentProfile,
         request.student_id,
@@ -70,13 +80,22 @@ def start_diagnostic(
             detail="Subject not found",
         )
 
-    diagnostic = generate_diagnostic(
-        db=db,
-        student_id=request.student_id,
-        subject_id=request.subject_id,
-        student_level=student.learning_level,
-        limit=request.limit,
-    )
+    try:
+        diagnostic = generate_diagnostic(
+            db=db,
+            student_id=request.student_id,
+            subject_id=request.subject_id,
+            student_level=student.learning_level,
+            limit=request.limit,
+        )
+
+    except ValueError as error:
+        # Raised when no study material exists for a concept or the
+        # model returns unusable content. Report it instead of a 500.
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        )
 
     if not diagnostic:
         raise HTTPException(
@@ -170,7 +189,15 @@ def start_diagnostic(
 def submit_diagnostic_answer(
     request: DiagnosticSubmitRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     student = db.get(
         StudentProfile,
         request.student_id,
