@@ -53,6 +53,15 @@ def token_for(username: str, role: str = "student") -> dict:
 
 
 @pytest.fixture(autouse=True)
+def _reset_login_throttle():
+    from app.core import login_throttle
+
+    login_throttle.reset()
+    yield
+    login_throttle.reset()
+
+
+@pytest.fixture(autouse=True)
 def _sign_in_module_client(request):
     """Sign the module-level ``client`` in as ``pytest_user``.
 

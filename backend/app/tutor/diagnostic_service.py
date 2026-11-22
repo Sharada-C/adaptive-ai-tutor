@@ -2,15 +2,15 @@ import json
 import re
 
 from sqlalchemy.orm import Session
-from app.models.curriculum import Subject, Concept
+from app.core.config import settings
+from app.models.curriculum import Concept
 from app.models.student import ConceptMastery
-from app.tutor.evaluation_service import evaluate_answer
 
 from app.rag.retriever import retrieve_with_subject_fallback
 from app.tutor.tutor_service import generate_response
 
 
-MASTERY_THRESHOLD = 0.80
+MASTERY_THRESHOLD = settings.prerequisite_mastery_threshold
 
 
 def get_concept_mastery(

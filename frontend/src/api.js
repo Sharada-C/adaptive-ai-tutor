@@ -36,6 +36,11 @@ function errorMessage(data, response) {
     return detail;
   }
 
+  // Structured errors (e.g. a locked concept) carry a readable message.
+  if (typeof detail?.message === "string" && detail.message.trim()) {
+    return detail.message;
+  }
+
   if (Array.isArray(detail) && detail.length > 0) {
     return detail
       .map((item) => item?.msg)
@@ -228,20 +233,14 @@ export const generateQuiz = (studentId, conceptId) =>
     json: { student_id: studentId, concept_id: conceptId },
   });
 
-export const evaluateQuizAnswer = ({
-  studentId,
-  conceptId,
-  question,
-  expectedAnswer,
-  studentAnswer,
-}) =>
+// The server stored the question and its expected answer when it generated
+// the quiz; the browser only sends which question it answered.
+export const evaluateQuizAnswer = ({ studentId, questionId, studentAnswer }) =>
   request("/tutor/evaluate", {
     method: "POST",
     json: {
       student_id: studentId,
-      concept_id: conceptId,
-      question,
-      expected_answer: expectedAnswer,
+      question_id: questionId,
       student_answer: studentAnswer,
     },
   });

@@ -29,6 +29,12 @@ export default function ReteachScreen({ reteach, busy, onContinue }) {
         <div className="feedback-box lesson-content">
           <strong>Reteaching</strong>
           <p>{reteach.explanation}</p>
+          {reteach.mode === "extractive" && (
+            <small className="mode-note">
+              Shown directly from your study material. The AI's own wording
+              could not be verified against it.
+            </small>
+          )}
         </div>
 
         <button

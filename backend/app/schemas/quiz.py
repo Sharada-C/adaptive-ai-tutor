@@ -7,6 +7,8 @@ class QuizRequest(BaseModel):
 
 
 class QuizQuestion(BaseModel):
+    """What the browser receives. The expected answer stays on the server."""
+
+    question_id: int
     question: str
-    expected_answer: str
     difficulty: str

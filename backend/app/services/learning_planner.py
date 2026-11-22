@@ -1,10 +1,23 @@
+from dataclasses import dataclass
+
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.curriculum import Concept
 from app.models.student import ConceptMastery
+from app.services.prerequisite_service import blocking_prerequisite
 
 
-MASTERY_THRESHOLD = 0.80
+MASTERY_THRESHOLD = settings.prerequisite_mastery_threshold
+
+
+@dataclass
+class PlanDecision:
+    """What to study next, or an explicit reason there is nothing to study."""
+
+    status: str  # "next" | "complete" | "blocked"
+    reason: str
+    concept: Concept | None = None
 
 
 def get_mastery(
@@ -32,25 +45,35 @@ def prerequisites_satisfied(
     student_id: int,
     concept: Concept,
 ) -> bool:
-    for prerequisite in concept.prerequisites:
-        mastery = get_mastery(
-            db,
-            student_id,
-            prerequisite.id,
-        )
-
-        if mastery < MASTERY_THRESHOLD:
-            return False
-
-    return True
+    return blocking_prerequisite(db, student_id, concept) is None
 
 
-def select_next_concept(
+def _deepest_blocker(db: Session, student_id: int, concept: Concept) -> Concept:
+    """Follow weakest-unmastered prerequisites down to one that can be studied."""
+
+    seen = {concept.id}
+    current = concept
+
+    while True:
+        blocker = blocking_prerequisite(db, student_id, current)
+
+        if blocker is None:
+            return current
+
+        nxt = next(p for p in current.prerequisites if p.id == blocker["concept_id"])
+
+        if nxt.id in seen:  # circular data: stop rather than loop forever
+            return current
+
+        seen.add(nxt.id)
+        current = nxt
+
+
+def plan_next_concept(
     db: Session,
     student_id: int,
     subject_id: int,
-) -> Concept | None:
-
+) -> PlanDecision:
     concepts = (
         db.query(Concept)
         .filter(Concept.subject_id == subject_id)
@@ -58,34 +81,53 @@ def select_next_concept(
         .all()
     )
 
-    for concept in concepts:
+    if not concepts:
+        return PlanDecision("complete", "This subject has no concepts yet.")
 
-        mastery = get_mastery(
-            db,
-            student_id,
-            concept.id,
+    unmastered_locked = 0
+
+    for concept in concepts:
+        mastered = get_mastery(db, student_id, concept.id) >= MASTERY_THRESHOLD
+        satisfied = prerequisites_satisfied(db, student_id, concept)
+
+        if mastered and satisfied:
+            continue
+
+        if satisfied:
+            return PlanDecision(
+                "next", "Next concept to learn.", concept
+            )
+
+        if mastered:
+            # Mastered, but a prerequisite slipped: revisit that instead.
+            target = _deepest_blocker(db, student_id, concept)
+
+            if target.id != concept.id:
+                return PlanDecision(
+                    "next",
+                    f"Revisit '{target.name}' before continuing with "
+                    f"'{concept.name}'.",
+                    target,
+                )
+
+        unmastered_locked += 1
+
+    if unmastered_locked:
+        return PlanDecision(
+            "blocked",
+            f"{unmastered_locked} concept(s) are locked behind prerequisites "
+            "that can never be satisfied (the prerequisite graph may contain "
+            "a cycle). Ask an instructor to fix the curriculum.",
         )
 
-        # Already mastered.
-        if mastery >= MASTERY_THRESHOLD:
-    # A mastered concept may still require
-    # prerequisite reinforcement.
-            if not prerequisites_satisfied(
-                db,
-                student_id,
-                concept,
-            ):
-                return concept
+    return PlanDecision("complete", "All available concepts are mastered.")
 
-            continue
 
-# Don't introduce a concept until
-# its prerequisites are understood.
-        if not prerequisites_satisfied(
-            db,
-            student_id,
-            concept,    
-        ):
-            continue
+def select_next_concept(
+    db: Session,
+    student_id: int,
+    subject_id: int,
+) -> Concept | None:
+    """Compatibility wrapper: the concept to study, or None."""
 
-        return concept
+    return plan_next_concept(db, student_id, subject_id).concept

@@ -1,11 +1,13 @@
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+
 from app.models.student import ConceptMastery, Misconception
 from app.models.curriculum import Concept
 from app.services.adaptive_engine import decide_next_action
 
 
-PREREQUISITE_THRESHOLD = 0.70
+PREREQUISITE_THRESHOLD = settings.prerequisite_mastery_threshold
 
 
 def get_concept_mastery(

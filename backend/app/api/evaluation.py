@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import ensure_student_access, get_current_user
 from app.models.student import User
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
 from app.models.student import (
     AssessmentAttempt,
-    ConceptMastery,
+    QuizQuestionRecord,
     Misconception,
     StudentProfile,
 )
@@ -14,6 +15,7 @@ from app.schemas.evaluation import (
     EvaluationRequest,
     EvaluationResponse,
 )
+from app.services.mastery_service import lock_mastery, refresh_mastery
 from app.services.adaptation_service import determine_student_action
 from app.tutor.evaluation_service import evaluate_answer
 
@@ -64,11 +66,37 @@ def evaluate(
         )
 
     # ---------------------------------------------------------
-    # 2. Evaluate answer using LLM
+    # 2. Load the server-stored question (locked, so it is graded once)
+    # ---------------------------------------------------------
+    stored = db.execute(
+        select(QuizQuestionRecord)
+        .where(
+            QuizQuestionRecord.id == request.question_id,
+            QuizQuestionRecord.student_id == request.student_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+
+    if stored is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Quiz question not found",
+        )
+
+    if stored.answered:
+        raise HTTPException(
+            status_code=409,
+            detail="This question has already been answered",
+        )
+
+    concept_id = stored.concept_id
+
+    # ---------------------------------------------------------
+    # 2b. Evaluate against the stored answer, never a client-sent one
     # ---------------------------------------------------------
     evaluation = evaluate_answer(
-        question=request.question,
-        expected_answer=request.expected_answer,
+        question=stored.question_text,
+        expected_answer=stored.expected_answer,
         student_answer=request.student_answer,
     )
 
@@ -77,110 +105,28 @@ def evaluate(
     misconception_text = evaluation.get("misconception")
 
     # ---------------------------------------------------------
-    # 3. Store assessment attempt
+    # 3. Lock the mastery row, store the attempt, recompute mastery
+    #    (race-free: see app/services/mastery_service.py)
     # ---------------------------------------------------------
-    attempt = AssessmentAttempt(
-        student_id=request.student_id,
-        concept_id=request.concept_id,
-        question=request.question,
-        student_answer=request.student_answer,
-        score=score,
-        result=result,
+    mastery = lock_mastery(
+        db,
+        request.student_id,
+        concept_id,
     )
 
-    db.add(attempt)
-
-    # ---------------------------------------------------------
-    # 4. Get or create mastery record
-    # ---------------------------------------------------------
-    mastery = (
-        db.query(ConceptMastery)
-        .filter(
-            ConceptMastery.student_id == request.student_id,
-            ConceptMastery.concept_id == request.concept_id,
-        )
-        .first()
-    )
-
-    if not mastery:
-        mastery = ConceptMastery(
+    db.add(
+        AssessmentAttempt(
             student_id=request.student_id,
-            concept_id=request.concept_id,
-            mastery_score=0.0,
-            attempts=0,
-            correct_answers=0,
+            concept_id=concept_id,
+            question=stored.question_text,
+            student_answer=request.student_answer,
+            score=score,
+            result=result,
         )
-
-        db.add(mastery)
-
-    # ---------------------------------------------------------
-    # 5. Update mastery
-    # ---------------------------------------------------------
-    mastery.attempts += 1
-
-    if result == "correct":
-        mastery.correct_answers += 1
-
-    # Flush pending changes so the current assessment attempt
-    # is available when calculating recent performance.
-    db.flush()
-
-    # Get the student's five most recent attempts
-    # for this concept.
-    recent_attempts = (
-        db.query(AssessmentAttempt)
-        .filter(
-            AssessmentAttempt.student_id == request.student_id,
-            AssessmentAttempt.concept_id == request.concept_id,
-        )
-        .order_by(
-            AssessmentAttempt.created_at.desc(),
-            AssessmentAttempt.id.desc(),
-        )
-        .limit(5)
-        .all()
     )
 
-    # Reverse so scores are ordered:
-    #
-    # oldest -> newest
-    #
-    # This allows newer attempts to receive larger weights.
-    scores = [
-        assessment.score
-        for assessment in reversed(recent_attempts)
-    ]
-
-    if scores:
-        # Example for five attempts:
-        #
-        # oldest                 newest
-        #   ↓                       ↓
-        #   1       2       3       4       5
-        #
-        # Newer performance has more influence.
-        weights = list(range(1, len(scores) + 1))
-
-        weighted_sum = sum(
-            score_value * weight
-            for score_value, weight in zip(
-                scores,
-                weights,
-            )
-        )
-
-        mastery.mastery_score = (
-            weighted_sum / sum(weights)
-        )
-
-    # Keep mastery between 0 and 1.
-    mastery.mastery_score = max(
-        0.0,
-        min(
-            1.0,
-            mastery.mastery_score,
-        ),
-    )
+    refresh_mastery(db, mastery)
+    stored.answered = True
 
     # ---------------------------------------------------------
     # 6. Handle misconceptions
@@ -196,7 +142,7 @@ def evaluate(
             db.query(Misconception)
             .filter(
                 Misconception.student_id == request.student_id,
-                Misconception.concept_id == request.concept_id,
+                Misconception.concept_id == concept_id,
                 Misconception.resolved.is_(False),
             )
             .all()
@@ -217,7 +163,7 @@ def evaluate(
                 db.query(Misconception)
                 .filter(
                     Misconception.student_id == request.student_id,
-                    Misconception.concept_id == request.concept_id,
+                    Misconception.concept_id == concept_id,
                     Misconception.description == misconception_text,
                     Misconception.resolved.is_(False),
                 )
@@ -227,7 +173,7 @@ def evaluate(
             if not existing_misconception:
                 misconception = Misconception(
                     student_id=request.student_id,
-                    concept_id=request.concept_id,
+                    concept_id=concept_id,
                     description=misconception_text,
                     resolved=False,
                 )
@@ -246,7 +192,7 @@ def evaluate(
                 db.query(Misconception)
                 .filter(
                     Misconception.student_id == request.student_id,
-                    Misconception.concept_id == request.concept_id,
+                    Misconception.concept_id == concept_id,
                     Misconception.description == misconception_text,
                     Misconception.resolved.is_(False),
                 )
@@ -256,7 +202,7 @@ def evaluate(
             if not existing_misconception:
                 misconception = Misconception(
                     student_id=request.student_id,
-                    concept_id=request.concept_id,
+                    concept_id=concept_id,
                     description=misconception_text,
                     resolved=False,
                 )
@@ -273,7 +219,7 @@ def evaluate(
     decision = determine_student_action(
         db=db,
         student_id=request.student_id,
-        concept_id=request.concept_id,
+        concept_id=concept_id,
     )
 
     # ---------------------------------------------------------

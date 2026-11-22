@@ -1,7 +1,8 @@
 import re
-import requests
+from dataclasses import dataclass
 
 from app.core.config import settings
+from app.services.ollama_client import post_json
 
 
 OLLAMA_URL = f"{settings.ollama_base_url.rstrip('/')}/api/generate"
@@ -9,9 +10,9 @@ MODEL_NAME = settings.llm_model
 
 
 def generate_response(prompt: str) -> str:
-    response = requests.post(
+    data = post_json(
         OLLAMA_URL,
-        json={
+        {
             "model": MODEL_NAME,
             "prompt": prompt,
             "stream": False,
@@ -20,12 +21,7 @@ def generate_response(prompt: str) -> str:
                 "top_p": 0.1,
             },
         },
-        timeout=120,
     )
-
-    response.raise_for_status()
-
-    data = response.json()
 
     generated_text = data.get("response")
 
@@ -262,21 +258,30 @@ def build_evidence_lesson(retrieved_knowledge: str) -> str:
     return "\n\n".join(statements)
 
 
-def generate_grounded_response(
+@dataclass
+class GroundedResult:
+    text: str
+    # "llm": the model's wording passed the grounding check.
+    # "extractive": deterministic text built directly from the study material.
+    mode: str
+
+
+def grounded_response(
     prompt: str,
     retrieved_knowledge: str,
-) -> str:
+) -> GroundedResult:
     """
-    Generate a natural tutor response using the LLM, but only accept it
-    when every factual sentence has sufficient lexical support from the
-    retrieved evidence.
-
-    If the LLM output fails the grounding check, return the deterministic
-    evidence-only fallback.
+    Generate a tutor response with the LLM and accept it only when every
+    factual sentence has sufficient support in the retrieved evidence;
+    otherwise return the deterministic evidence-only lesson. The result
+    says which of the two the student is looking at.
     """
 
     if not retrieved_knowledge.strip():
-        return "The available knowledge does not provide that detail."
+        return GroundedResult(
+            "The available knowledge does not provide that detail.",
+            "extractive",
+        )
 
     sanitized_knowledge = sanitize_retrieved_knowledge(
         retrieved_knowledge
@@ -288,11 +293,19 @@ def generate_grounded_response(
 
     llm_response = generate_response(prompt)
 
-
     if validate_grounding(
         llm_response,
         sanitized_knowledge,
     ):
-        return llm_response
+        return GroundedResult(llm_response, "llm")
 
-    return evidence_lesson
+    return GroundedResult(evidence_lesson, "extractive")
+
+
+def generate_grounded_response(
+    prompt: str,
+    retrieved_knowledge: str,
+) -> str:
+    """Text-only form of :func:`grounded_response`."""
+
+    return grounded_response(prompt, retrieved_knowledge).text
