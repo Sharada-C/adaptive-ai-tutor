@@ -1,6 +1,9 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import ensure_student_access, get_current_user
+from app.services.mastery_service import lock_mastery, refresh_mastery
+from app.models.student import User
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
@@ -8,7 +11,6 @@ from app.models.curriculum import Subject, Concept
 from app.models.student import (
     StudentProfile,
     AssessmentAttempt,
-    ConceptMastery,
     Misconception,
     DiagnosticSession,
     DiagnosticQuestion,
@@ -47,7 +49,15 @@ def get_db():
 def start_diagnostic(
     request: DiagnosticStartRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     student = db.get(
         StudentProfile,
         request.student_id,
@@ -70,13 +80,22 @@ def start_diagnostic(
             detail="Subject not found",
         )
 
-    diagnostic = generate_diagnostic(
-        db=db,
-        student_id=request.student_id,
-        subject_id=request.subject_id,
-        student_level=student.learning_level,
-        limit=request.limit,
-    )
+    try:
+        diagnostic = generate_diagnostic(
+            db=db,
+            student_id=request.student_id,
+            subject_id=request.subject_id,
+            student_level=student.learning_level,
+            limit=request.limit,
+        )
+
+    except ValueError as error:
+        # Raised when no study material exists for a concept or the
+        # model returns unusable content. Report it instead of a 500.
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
 
     if not diagnostic:
         raise HTTPException(
@@ -170,7 +189,15 @@ def start_diagnostic(
 def submit_diagnostic_answer(
     request: DiagnosticSubmitRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     student = db.get(
         StudentProfile,
         request.student_id,
@@ -246,7 +273,7 @@ def submit_diagnostic_answer(
         raise HTTPException(
             status_code=500,
             detail="Stored evaluation criteria are invalid.",
-        )
+        ) from None
 
     # IMPORTANT:
     # expected_answer and criteria come from the database,
@@ -274,94 +301,26 @@ def submit_diagnostic_answer(
     question.result = result
     question.answered = True
 
-    # Store normal assessment history as well.
-    attempt = AssessmentAttempt(
-        student_id=request.student_id,
-        concept_id=question.concept_id,
-        question=question.question,
-        student_answer=request.student_answer,
-        score=score,
-        result=result,
+    # Lock the mastery row, store normal assessment history, then recompute
+    # mastery from it (race-free; see app/services/mastery_service.py).
+    mastery = lock_mastery(
+        db,
+        request.student_id,
+        question.concept_id,
     )
 
-    db.add(attempt)
-
-    # Update mastery
-    mastery = (
-        db.query(ConceptMastery)
-        .filter(
-            ConceptMastery.student_id == request.student_id,
-            ConceptMastery.concept_id == question.concept_id,
-        )
-        .first()
-    )
-
-    if not mastery:
-
-        mastery = ConceptMastery(
+    db.add(
+        AssessmentAttempt(
             student_id=request.student_id,
             concept_id=question.concept_id,
-            mastery_score=0.0,
-            attempts=0,
-            correct_answers=0,
+            question=question.question,
+            student_answer=request.student_answer,
+            score=score,
+            result=result,
         )
-
-        db.add(mastery)
-
-    mastery.attempts += 1
-
-    if result == "correct":
-        mastery.correct_answers += 1
-
-    # Make sure the current assessment attempt is visible
-    # before calculating recent performance.
-    db.flush()
-
-    # Use the student's five most recent attempts for this concept.
-    recent_attempts = (
-        db.query(AssessmentAttempt)
-        .filter(
-            AssessmentAttempt.student_id == request.student_id,
-            AssessmentAttempt.concept_id == question.concept_id,
-        )
-        .order_by(
-            AssessmentAttempt.created_at.desc(),
-            AssessmentAttempt.id.desc(),
-        )
-        .limit(5)
-        .all()
     )
 
-    # Reverse so older attempts have smaller weights
-    # and newer attempts have larger weights.
-    scores = [
-        attempt.score
-        for attempt in reversed(recent_attempts)
-    ]
-
-    if scores:
-        weights = list(range(1, len(scores) + 1))
-
-        weighted_sum = sum(
-            score_value * weight
-            for score_value, weight in zip(
-                scores,
-                weights,
-            )
-        )
-
-        mastery.mastery_score = (
-            weighted_sum / sum(weights)
-        )
-
-    # Keep mastery between 0 and 1.
-    mastery.mastery_score = max(
-        0.0,
-        min(
-            1.0,
-            mastery.mastery_score,
-        ),
-    )
+    refresh_mastery(db, mastery)
 
     # Resolve previous misconceptions after a correct answer.
     if result == "correct":

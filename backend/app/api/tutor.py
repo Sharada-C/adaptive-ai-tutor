@@ -1,12 +1,19 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
+from app.api.deps import ensure_student_access, get_current_user
+from app.models.student import User
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
 from app.tutor.context_builder import build_tutor_context
-from app.tutor.tutor_service import generate_response, generate_grounded_response
-from app.rag.retriever import retrieve_relevant_chunks_with_scores
+from app.tutor.tutor_service import grounded_response
+from app.services.prerequisite_service import locked_concept_detail
+from app.rag.retriever import retrieve_with_subject_fallback
 from app.models.curriculum import Concept
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/tutor",
@@ -38,6 +45,8 @@ class LessonResponse(BaseModel):
     concept: str
     explanation: str
     retrieved_knowledge: list[RetrievedKnowledge]
+    # "llm" or "extractive" (study material shown directly)
+    mode: str = "llm"
 
 
 class ReteachRequest(BaseModel):
@@ -50,6 +59,7 @@ class ReteachResponse(BaseModel):
     action: str
     misconceptions: list[str]
     explanation: str
+    mode: str = "llm"
 
 
 def retrieve_knowledge(
@@ -58,23 +68,17 @@ def retrieve_knowledge(
     concept_id: int,
     subject_id: int | None = None,
     limit: int = 3,
+    _user: User = Depends(get_current_user),
 ):
     """Prioritize concept-specific evidence over subject-wide evidence."""
 
-    results = retrieve_relevant_chunks_with_scores(
+    results = retrieve_with_subject_fallback(
         db=db,
         query=query,
         concept_id=concept_id,
+        subject_id=subject_id,
         limit=limit,
     )
-
-    if not results and subject_id is not None:
-        results = retrieve_relevant_chunks_with_scores(
-            db=db,
-            query=query,
-            subject_id=subject_id,
-            limit=limit,
-        )
 
     if not results:
         knowledge_text = "No retrieved knowledge available."
@@ -95,7 +99,20 @@ def retrieve_knowledge(
 def generate_lesson(
     request: LessonRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
+    locked = locked_concept_detail(db, request.student_id, request.concept_id)
+
+    if locked:
+        raise HTTPException(status_code=409, detail=locked)
+
     try:
         context = build_tutor_context(
             db=db,
@@ -107,7 +124,7 @@ def generate_lesson(
         raise HTTPException(
             status_code=404,
             detail=str(error),
-        )
+        ) from error
 
     misconceptions = context["misconceptions"]
 
@@ -144,9 +161,7 @@ def generate_lesson(
         subject_id=concept.subject_id,
         limit=2,
     )
-    print("\n===== RETRIEVED KNOWLEDGE FOR RETEACH =====")
-    print(knowledge_text)
-    print("===========================================\n")
+    logger.debug("retrieved knowledge for lesson: %s", knowledge_text)
 
     prompt = f"""
 You are an evidence-grounded academic tutor.
@@ -339,16 +354,15 @@ Do not explain your grounding process.
 Return only the lesson and one final understanding-check question.
 """
 
-    explanation = generate_grounded_response(
+    result = grounded_response(
         prompt=prompt,
         retrieved_knowledge=knowledge_text,
     )
 
-    
-
     return LessonResponse(
     concept=context["concept"],
-    explanation=explanation,
+    explanation=result.text,
+    mode=result.mode,
     retrieved_knowledge=[
         RetrievedKnowledge(
             content=item["chunk"].content,
@@ -367,7 +381,15 @@ Return only the lesson and one final understanding-check question.
 def reteach(
     request: ReteachRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    ensure_student_access(
+        db,
+        current_user,
+        request.student_id,
+        allow_staff=False,
+    )
+
     try:
         context = build_tutor_context(
             db=db,
@@ -379,7 +401,7 @@ def reteach(
         raise HTTPException(
             status_code=404,
             detail=str(error),
-        )
+        ) from error
 
     misconceptions = context["misconceptions"]
     has_specific_misconception = bool(misconceptions)
@@ -532,7 +554,7 @@ Do NOT add information merely because it is generally true.
 Return the teaching explanation and the checking question.
 """
 
-    explanation = generate_grounded_response(
+    result = grounded_response(
         prompt=prompt,
         retrieved_knowledge=knowledge_text,
     )
@@ -541,5 +563,6 @@ Return the teaching explanation and the checking question.
         concept=context["concept"],
         action="reteach",
         misconceptions=misconceptions,
-        explanation=explanation,
+        explanation=result.text,
+        mode=result.mode,
     )

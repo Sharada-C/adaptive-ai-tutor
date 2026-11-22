@@ -1,9 +1,13 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from pypdf.errors import PdfReadError, PdfStreamError
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from app.api.deps import require_staff
+from app.models.student import User
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.database import SessionLocal
 from app.rag.knowledge_ingestion import (
     ingest_text_for_concept,
@@ -15,6 +19,68 @@ router = APIRouter(
     prefix="/knowledge",
     tags=["Knowledge Base"],
 )
+
+
+ALLOWED_EXTENSIONS = {".txt", ".md", ".markdown", ".pdf"}
+UPLOAD_ERRORS = (PdfReadError, PdfStreamError)
+
+
+def _too_large() -> HTTPException:
+    limit_mb = settings.max_upload_bytes // (1024 * 1024)
+    return HTTPException(
+        status_code=413,
+        detail=f"File is too large. The limit is {limit_mb} MB.",
+    )
+
+
+def _save_upload(file: UploadFile) -> Path:
+    """Copy an upload to a temp file, refusing anything over the size cap.
+
+    The declared Content-Length is checked first (cheap rejection), then the
+    bytes actually received are counted while streaming, so a lying client
+    cannot push past the limit and the file is never loaded into memory.
+    """
+
+    extension = Path(file.filename or "").suffix.lower()
+
+    if extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Unsupported file type. Currently supported: "
+                ".txt, .md, .markdown, .pdf"
+            ),
+        )
+
+    if file.size is not None and file.size > settings.max_upload_bytes:
+        raise _too_large()
+
+    total = 0
+
+    with NamedTemporaryFile(suffix=extension, delete=False) as temporary_file:
+        path = Path(temporary_file.name)
+
+        try:
+            while chunk := file.file.read(1024 * 1024):
+                total += len(chunk)
+
+                if total > settings.max_upload_bytes:
+                    raise _too_large()
+
+                temporary_file.write(chunk)
+        except BaseException:
+            temporary_file.close()
+            path.unlink(missing_ok=True)
+            raise
+
+    return path
+
+
+def _unreadable_pdf() -> HTTPException:
+    return HTTPException(
+        status_code=422,
+        detail="The PDF could not be read. It may be corrupt or damaged.",
+    )
 
 
 class KnowledgeIngestRequest(BaseModel):
@@ -49,6 +115,7 @@ def get_db():
 def ingest_knowledge(
     request: KnowledgeIngestRequest,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     try:
         inserted = ingest_text_for_concept(
@@ -68,30 +135,18 @@ def ingest_knowledge(
         raise HTTPException(
             status_code=400,
             detail=str(error),
-        )
+        ) from error
 @router.post("/upload", response_model=KnowledgeIngestResponse, status_code=201)
 def upload_knowledge_file(
     concept_id: int = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
+    temporary_path = None
+
     try:
-        extension = Path(file.filename or "").suffix.lower()
-
-        if extension not in {".txt", ".md", ".markdown", ".pdf"}:
-            raise HTTPException(
-                status_code=400,
-                detail="Unsupported file type. Currently supported: .txt, .md, .markdown, .pdf",
-            )
-
-        with NamedTemporaryFile(
-            suffix=extension,
-            delete=False,
-        ) as temporary_file:
-            temporary_path = Path(temporary_file.name)
-
-            while chunk := file.file.read(1024 * 1024):
-                temporary_file.write(chunk)
+        temporary_path = _save_upload(file)
 
         from app.rag.source_ingestion import ingest_file_for_concept
 
@@ -102,28 +157,27 @@ def upload_knowledge_file(
             source=file.filename,
         )
 
-        temporary_path.unlink(missing_ok=True)
-
         return KnowledgeIngestResponse(
             concept_id=concept_id,
             source=file.filename,
             chunks_inserted=inserted,
         )
 
-    except ValueError as error:
-        if "temporary_path" in locals():
-            temporary_path.unlink(missing_ok=True)
+    except UPLOAD_ERRORS:
+        raise _unreadable_pdf() from None
 
+
+    except ValueError as error:
         raise HTTPException(
             status_code=400,
             detail=str(error),
-        )
+        ) from error
 
-    except Exception:
-        if "temporary_path" in locals():
+    finally:
+        if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+        file.file.close()
 
-        raise
 
 @router.post(
     "/ingest/subject",
@@ -133,6 +187,7 @@ def upload_knowledge_file(
 def ingest_subject_knowledge(
     request: SubjectKnowledgeIngestRequest,
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     try:
         inserted = ingest_text_for_subject(
@@ -152,7 +207,7 @@ def ingest_subject_knowledge(
         raise HTTPException(
             status_code=400,
             detail=str(error),
-        )
+        ) from error
 
 @router.post(
     "/upload/subject",
@@ -163,29 +218,12 @@ def upload_subject_knowledge_file(
     subject_id: int = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    _staff: User = Depends(require_staff),
 ):
     temporary_path = None
 
     try:
-        extension = Path(file.filename or "").suffix.lower()
-
-        if extension not in {".txt", ".md", ".markdown", ".pdf"}:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Unsupported file type. Currently supported: "
-                    ".txt, .md, .markdown, .pdf"
-                ),
-            )
-
-        with NamedTemporaryFile(
-            suffix=extension,
-            delete=False,
-        ) as temporary_file:
-            temporary_path = Path(temporary_file.name)
-
-            while chunk := file.file.read(1024 * 1024):
-                temporary_file.write(chunk)
+        temporary_path = _save_upload(file)
 
         from app.rag.source_ingestion import extract_file_text
 
@@ -204,11 +242,14 @@ def upload_subject_knowledge_file(
             chunks_inserted=inserted,
         )
 
+    except UPLOAD_ERRORS:
+        raise _unreadable_pdf() from None
+
     except ValueError as error:
         raise HTTPException(
             status_code=400,
             detail=str(error),
-        )
+        ) from error
 
     finally:
         if temporary_path is not None:

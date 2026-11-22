@@ -1,15 +1,6 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
-
-
-class UserCreate(BaseModel):
-    username: str
-
-
-class UserResponse(BaseModel):
-    id: int
-    username: str
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class SubjectMasteryResponse(BaseModel):
@@ -52,3 +43,30 @@ class MasteryResponse(BaseModel):
     correct_answers: int
 
     model_config = ConfigDict(from_attributes=True)
+
+class StudentBootstrapResponse(BaseModel):
+    """Identifiers the frontend needs to talk to the rest of the API.
+
+    ``student_id`` is the StudentProfile id used by the tutor, planner,
+    mastery and diagnostic endpoints. ``user_id`` is only needed for
+    ``GET /students/{user_id}/profile``.
+    """
+
+    user_id: int
+    student_id: int
+    username: str
+    role: str
+    learning_level: str
+
+
+class LearningLevelUpdate(BaseModel):
+    learning_level: Literal[
+        "beginner",
+        "intermediate",
+        "advanced",
+    ]
+
+
+class LearningLevelResponse(BaseModel):
+    student_id: int
+    learning_level: str

@@ -39,18 +39,64 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r backend/requirements.txt
+          pip install -r backend/requirements-dev.txt
 
-      - name: Create database tables
+      - name: Lint (ruff)
         working-directory: backend
+        run: ruff check .
+
+      - name: Dependency vulnerability scan
+        run: pip-audit -r backend/requirements.txt
+
+      - name: Build schema with Alembic (fresh database)
         env:
           DATABASE_URL: postgresql+psycopg://tutor:tutor_password@localhost:5432/adaptive_tutor
         run: |
-          python create_tables.py
+          alembic -c alembic.ini upgrade head
+          alembic -c alembic.ini check
 
       - name: Run tests
         working-directory: backend
         env:
           DATABASE_URL: postgresql+psycopg://tutor:tutor_password@localhost:5432/adaptive_tutor
         run: |
-          pytest -q
+          pytest -q --cov=app --cov-report=term-missing --cov-fail-under=75
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Production build
+        working-directory: frontend
+        run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile -t adaptive-tutor-api .
+
+      - name: Build frontend image
+        run: docker build -t adaptive-tutor-web frontend

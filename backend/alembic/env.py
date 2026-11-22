@@ -1,5 +1,4 @@
 
-import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -11,7 +10,7 @@ from sqlalchemy import engine_from_config, pool
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
-from app.core.config import settings
+from app.core.config import settings  # noqa: E402
 from app.models import Base  # noqa: E402, F401
 
 config = context.config

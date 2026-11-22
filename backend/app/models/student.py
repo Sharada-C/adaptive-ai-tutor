@@ -1,6 +1,16 @@
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text, Float
+from sqlalchemy import (
+    Boolean,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -16,6 +26,31 @@ class User(Base):
         nullable=False,
     )
 
+    # NULL for accounts created before passwords existed; they cannot log
+    # in until an admin sets a password.
+    password_hash: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    role: Mapped[str] = mapped_column(
+        String(20),
+        default="student",
+        server_default="student",
+        nullable=False,
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=text("true"),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_users_username_lower", func.lower(username), unique=True),
+    )
+
 
 class StudentProfile(Base):
     __tablename__ = "student_profiles"
@@ -23,7 +58,7 @@ class StudentProfile(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
 
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
     )
@@ -42,11 +77,18 @@ class StudentProfile(Base):
 
 class ConceptMastery(Base):
     __tablename__ = "concept_mastery"
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id",
+            "concept_id",
+            name="uq_student_concept_mastery",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
     student_id: Mapped[int] = mapped_column(
-        ForeignKey("student_profiles.id"),
+        ForeignKey("student_profiles.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -77,7 +119,7 @@ class AssessmentAttempt(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
 
     student_id: Mapped[int] = mapped_column(
-        ForeignKey("student_profiles.id"),
+        ForeignKey("student_profiles.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -110,13 +152,50 @@ class AssessmentAttempt(Base):
         default=datetime.utcnow,
         nullable=False,
     )
+class QuizQuestionRecord(Base):
+    """A generated quiz question. The expected answer never leaves the server."""
+
+    __tablename__ = "quiz_questions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    student_id: Mapped[int] = mapped_column(
+        ForeignKey("student_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    concept_id: Mapped[int] = mapped_column(
+        ForeignKey("concepts.id"),
+        nullable=False,
+    )
+
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    expected_answer: Mapped[str] = mapped_column(Text, nullable=False)
+
+    difficulty: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    answered: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+
 class Misconception(Base):
     __tablename__ = "misconceptions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
     student_id: Mapped[int] = mapped_column(
-        ForeignKey("student_profiles.id"),
+        ForeignKey("student_profiles.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -145,7 +224,7 @@ class DiagnosticSession(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
 
     student_id: Mapped[int] = mapped_column(
-        ForeignKey("student_profiles.id"),
+        ForeignKey("student_profiles.id", ondelete="CASCADE"),
         nullable=False,
     )
 
@@ -172,7 +251,7 @@ class DiagnosticQuestion(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
 
     session_id: Mapped[int] = mapped_column(
-        ForeignKey("diagnostic_sessions.id"),
+        ForeignKey("diagnostic_sessions.id", ondelete="CASCADE"),
         nullable=False,
     )
 

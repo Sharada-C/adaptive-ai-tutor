@@ -1,7 +1,10 @@
 import json
+import logging
 import re
 
 from app.tutor.tutor_service import generate_response
+
+logger = logging.getLogger(__name__)
 
 
 PLACEHOLDER_MISCONCEPTIONS = {
@@ -59,6 +62,40 @@ def _extract_json_object(response: str) -> dict:
     )
 
 
+def _normalize_text(text: str) -> str:
+    """Lowercase and reduce text to space-separated alphanumeric words."""
+
+    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+def _evidence_is_in_answer(evidence: str, student_answer: str) -> bool:
+    """
+    Return True if the quoted evidence really comes from the student's
+    answer.
+
+    Small language models sometimes "find" a claim by restating the
+    question or the expected answer and attributing it to the student.
+    Requiring a quotation that exists in the student's answer rejects
+    those invented claims. A small amount of paraphrase is tolerated.
+    """
+
+    evidence_text = _normalize_text(evidence)
+    answer_text = _normalize_text(student_answer)
+
+    if not evidence_text:
+        return False
+
+    if evidence_text in answer_text:
+        return True
+
+    evidence_words = evidence_text.split()
+    answer_words = set(answer_text.split())
+
+    present = sum(1 for word in evidence_words if word in answer_words)
+
+    return present / len(evidence_words) >= 0.85
+
+
 def evaluate_answer(
     question: str,
     expected_answer: str,
@@ -94,11 +131,12 @@ def evaluate_answer(
     # True/False questions
     # ---------------------------------------------------------
     question_lower = question.lower()
-    print("\n===== TRUE/FALSE DEBUG =====")
-    print("QUESTION:", repr(question))
-    print("STUDENT ANSWER:", repr(student_answer))
-    print("EXPECTED ANSWER:", repr(expected_answer))
-    print("============================\n")
+    logger.debug(
+        "grading question=%r student_answer=%r expected_answer=%r",
+        question,
+        student_answer,
+        expected_answer,
+    )
     is_true_false = (
         "true or false" in question_lower
         or "is this statement true" in question_lower
@@ -161,6 +199,12 @@ Use only:
 4. The student's answer
 
 Do not assume a specific subject or domain.
+
+Only report claims the student actually wrote. Every claim MUST include
+"evidence": the exact words copied from the STUDENT ANSWER that express
+it. Never create a claim from the question, the expected answer or the
+evaluation criteria. If the student's answer is short or says little,
+report few claims or none.
 
 ============================================================
 QUESTION
@@ -251,6 +295,7 @@ Use exactly this structure:
   "claims": [
     {{
       "claim": "student's conceptual claim",
+      "evidence": "the exact words copied from the STUDENT ANSWER",
       "assessment": "supported"
     }}
   ]
@@ -272,24 +317,11 @@ Return ONLY the JSON object.
 
     response = generate_response(prompt).strip()
 
-    print("\n===== RAW LLM CLAIM ANALYSIS =====")
-    print(response)
-    print("==================================\n")
-    print("\n===== STUDENT ANSWER =====")
-    print(student_answer)
-
-    print("\n===== EXPECTED ANSWER =====")
-    print(expected_answer)
-
-    print("\n===== RAW LLM CLAIM ANALYSIS =====")
-    print(response)
-    print("==================================\n")
+    logger.debug("raw LLM claim analysis: %s", response)
 
     analysis = _extract_json_object(response)
 
-    print("\n===== EVALUATION CLAIMS =====")
-    print(json.dumps(analysis, indent=2))
-    print("=============================\n")
+    logger.debug("evaluation claims: %s", json.dumps(analysis))
 
     claims = analysis.get("claims", [])
 
@@ -312,6 +344,16 @@ Return ONLY the JSON object.
         ).strip().lower()
 
         if not claim:
+            continue
+
+        # Reject claims that are not traceable to the student's words.
+        # (Older responses without an "evidence" field are still accepted.)
+        evidence = claim_data.get("evidence")
+
+        if evidence is not None and not _evidence_is_in_answer(
+            str(evidence),
+            student_answer,
+        ):
             continue
 
         if assessment not in {
