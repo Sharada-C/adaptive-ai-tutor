@@ -1,6 +1,5 @@
-import requests
-
 from app.core.config import settings
+from app.services.ollama_client import post_json
 
 
 OLLAMA_URL = f"{settings.ollama_base_url.rstrip('/')}/api/embeddings"
@@ -8,18 +7,13 @@ EMBEDDING_MODEL = settings.embedding_model
 
 
 def generate_embedding(text: str) -> list[float]:
-    response = requests.post(
+    data = post_json(
         OLLAMA_URL,
-        json={
+        {
             "model": EMBEDDING_MODEL,
             "prompt": text,
         },
-        timeout=120,
     )
-
-    response.raise_for_status()
-
-    data = response.json()
 
     embedding = data.get("embedding")
 

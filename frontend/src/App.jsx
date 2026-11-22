@@ -603,9 +603,7 @@ function Tutor({
       setQuizEvaluation(
         await api.evaluateQuizAnswer({
           studentId,
-          conceptId: nextConcept.id,
-          question: quiz.question,
-          expectedAnswer: quiz.expected_answer,
+          questionId: quiz.question_id,
           studentAnswer: quizAnswer,
         })
       );

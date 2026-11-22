@@ -46,18 +46,24 @@ describe("api client", () => {
 
     await api.evaluateQuizAnswer({
       studentId: 1,
-      conceptId: 2,
-      question: "q",
-      expectedAnswer: "e",
+      questionId: 7,
       studentAnswer: "a",
     });
 
     expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
       student_id: 1,
-      concept_id: 2,
-      question: "q",
-      expected_answer: "e",
+      question_id: 7,
       student_answer: "a",
+    });
+  });
+
+  it("shows the message of a structured error such as a locked concept", async () => {
+    mockFetch(409, {
+      detail: { code: "prerequisite_required", message: "'B' is locked until you master 'A'." },
+    });
+
+    await expect(api.generateQuiz(1, 2)).rejects.toMatchObject({
+      message: "'B' is locked until you master 'A'.",
     });
   });
 

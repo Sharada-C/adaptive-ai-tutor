@@ -60,6 +60,12 @@ export default function LessonScreen({
             <div className="feedback-box lesson-content">
               <strong>Explanation</strong>
               <p>{lesson.explanation}</p>
+              {lesson.mode === "extractive" && (
+                <small className="mode-note">
+                  Shown directly from your study material. The AI's own
+                  wording could not be verified against it.
+                </small>
+              )}
             </div>
 
             {lesson.retrieved_knowledge &&

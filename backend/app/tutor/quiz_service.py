@@ -1,9 +1,12 @@
 import json
+import logging
 
 from app.tutor.tutor_service import (
     generate_response,
     validate_grounding,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def generate_quiz(
@@ -155,8 +158,7 @@ Return nothing except the JSON object.
             result = json.loads(repaired_response)
 
         except json.JSONDecodeError:
-            print("INVALID QUIZ JSON:")
-            print(repr(response))
+            logger.debug("invalid quiz JSON from LLM: %r", response)
 
         # Try extracting a valid JSON object from the response.
             decoder = json.JSONDecoder()
@@ -181,7 +183,7 @@ Return nothing except the JSON object.
             if not isinstance(result, dict):
                 raise ValueError(
                     "LLM returned invalid JSON for quiz generation."
-                )
+                ) from None
 
     # Validate required fields.
     required_fields = {

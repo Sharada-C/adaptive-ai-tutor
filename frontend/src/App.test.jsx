@@ -135,8 +135,9 @@ describe("App", () => {
       retrieved_knowledge: [],
     });
     api.generateQuiz.mockResolvedValue({
+      question_id: 42,
       question: "What does a switch do?",
-      expected_answer: "Connects devices.",
+      difficulty: "easy",
     });
     api.evaluateQuizAnswer.mockResolvedValue({
       result: "incorrect",
@@ -176,9 +177,7 @@ describe("App", () => {
     expect(await screen.findByText(/current mastery/i)).toBeInTheDocument();
     expect(api.evaluateQuizAnswer).toHaveBeenCalledWith({
       studentId: 3,
-      conceptId: 11,
-      question: "What does a switch do?",
-      expectedAnswer: "Connects devices.",
+      questionId: 42,
       studentAnswer: "It floods packets",
     });
 
@@ -333,6 +332,25 @@ describe("App", () => {
       /created "operating systems" with 8 concepts/i
     );
     expect(screen.getByLabelText(/what do you want to learn/i)).toHaveValue("2");
+  });
+
+  it("tells the student when a lesson is shown straight from the material", async () => {
+    api.getNextConcept.mockResolvedValue({ status: "ok", concept: CONCEPT_A });
+    api.getNextAction.mockResolvedValue({ action: "learn" });
+    api.generateLesson.mockResolvedValue({
+      explanation: "A switch connects devices.",
+      retrieved_knowledge: [],
+      mode: "extractive",
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await chooseSubject(user);
+    await user.click(screen.getByRole("button", { name: /skip diagnostic/i }));
+
+    expect(await screen.findByText("A switch connects devices.")).toBeInTheDocument();
+    expect(screen.getByText(/shown directly from your study material/i)).toBeInTheDocument();
   });
 });
 

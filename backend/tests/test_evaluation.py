@@ -2,6 +2,8 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.api import evaluation
+from app.db.database import SessionLocal
+from app.models.student import QuizQuestionRecord
 
 
 client = TestClient(app)
@@ -26,13 +28,24 @@ def test_evaluate_updates_mastery(monkeypatch, test_student):
         fake_evaluate_answer,
     )
 
+    db = SessionLocal()
+    row = QuizQuestionRecord(
+        student_id=test_student,
+        concept_id=1,
+        question_text="What is process management?",
+        expected_answer="It manages processes.",
+        difficulty="easy",
+    )
+    db.add(row)
+    db.commit()
+    question_id = row.id
+    db.close()
+
     response = client.post(
         "/tutor/evaluate",
         json={
             "student_id": test_student,
-            "concept_id": 1,
-            "question": "What is process management?",
-            "expected_answer": "It manages processes.",
+            "question_id": question_id,
             "student_answer": "It manages processes.",
         },
     )

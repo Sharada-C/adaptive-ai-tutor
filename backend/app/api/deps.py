@@ -51,7 +51,7 @@ def get_current_user(
     try:
         user_id = int(payload["sub"])
     except (KeyError, ValueError):
-        raise _unauthorized("Your session is invalid. Sign in again.")
+        raise _unauthorized("Your session is invalid. Sign in again.") from None
 
     user = db.get(User, user_id)
 

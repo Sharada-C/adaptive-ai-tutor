@@ -27,6 +27,18 @@ class Settings(BaseSettings):
     llm_model: str = "llama3.2:3b"
     embedding_model: str = "nomic-embed-text"
 
+    # A concept is 'mastered', and unlocks what depends on it, at this score.
+    prerequisite_mastery_threshold: float = 0.80
+
+    # Ollama calls: per-request timeout and how many times to retry a
+    # transient failure (connection error, timeout, 5xx).
+    ollama_timeout_seconds: float = 120.0
+    ollama_retries: int = 1
+    ollama_retry_backoff_seconds: float = 0.5
+
+    # Largest accepted knowledge-base upload.
+    max_upload_bytes: int = 10 * 1024 * 1024
+
     # Authentication. SECRET_KEY signs login tokens. When it is not set a
     # random key is generated at start-up, which is safe but logs everyone
     # out whenever the server restarts. Set a long random value in .env.

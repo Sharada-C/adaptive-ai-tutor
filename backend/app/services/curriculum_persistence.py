@@ -4,6 +4,46 @@ from app.models.curriculum import Concept, Subject
 from app.schemas.curriculum_generation import GeneratedCurriculum
 
 
+def find_prerequisite_cycle(
+    graph: dict[str, list[str]],
+) -> list[str] | None:
+    """Return one cycle as [a, b, ..., a] if the graph has one, else None.
+
+    ``graph`` maps a concept to the concepts it requires. Iterative
+    depth-first search with white/grey/black colouring.
+    """
+
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour = {node: WHITE for node in graph}
+
+    for start in graph:
+        if colour[start] != WHITE:
+            continue
+
+        path = [start]
+        iters = [iter(graph[start])]
+        colour[start] = GREY
+
+        while iters:
+            for nxt in iters[-1]:
+                if nxt not in colour:
+                    continue
+
+                if colour[nxt] == GREY:
+                    return path[path.index(nxt):] + [nxt]
+
+                if colour[nxt] == WHITE:
+                    colour[nxt] = GREY
+                    path.append(nxt)
+                    iters.append(iter(graph[nxt]))
+                    break
+            else:
+                colour[path.pop()] = BLACK
+                iters.pop()
+
+    return None
+
+
 def save_generated_curriculum(
     db: Session,
     curriculum: GeneratedCurriculum,
@@ -70,6 +110,20 @@ def save_generated_curriculum(
                     f"Prerequisite '{prerequisite_name}' for "
                     f"concept '{current_name}' does not exist."
                 )
+
+    graph = {
+        concept.name.strip().lower(): [
+            p.strip().lower() for p in concept.prerequisites
+        ]
+        for concept in curriculum.concepts
+    }
+    cycle = find_prerequisite_cycle(graph)
+
+    if cycle:
+        raise ValueError(
+            "Circular prerequisites are not allowed: "
+            + " -> ".join(cycle)
+        )
 
     # ---------------------------------------------------------
     # 4. Create Subject

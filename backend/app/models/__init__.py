@@ -6,6 +6,9 @@ from app.models.student import (
     ConceptMastery,
     AssessmentAttempt,
     Misconception,
+    QuizQuestionRecord,
+    DiagnosticSession,
+    DiagnosticQuestion,
 )
 
 from app.models.curriculum import (
@@ -23,6 +26,9 @@ __all__ = [
     "ConceptMastery",
     "AssessmentAttempt",
     "Misconception",
+    "QuizQuestionRecord",
+    "DiagnosticSession",
+    "DiagnosticQuestion",
     "Subject",
     "Concept",
     "KnowledgeChunk",

@@ -5,9 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
 from app.models.curriculum import Concept
+from app.models.student import QuizQuestionRecord
 from app.schemas.quiz import QuizQuestion, QuizRequest
 from app.tutor.context_builder import build_tutor_context
 from app.tutor.quiz_service import generate_quiz
+from app.services.prerequisite_service import locked_concept_detail
 from app.rag.retriever import retrieve_with_subject_fallback
 
 
@@ -42,6 +44,11 @@ def create_quiz(
         allow_staff=False,
     )
 
+    locked = locked_concept_detail(db, request.student_id, request.concept_id)
+
+    if locked:
+        raise HTTPException(status_code=409, detail=locked)
+
     try:
         context = build_tutor_context(
             db=db,
@@ -53,7 +60,7 @@ def create_quiz(
         raise HTTPException(
             status_code=404,
             detail=str(error),
-        )
+        ) from error
 
     concept = db.get(Concept, request.concept_id)
 
@@ -85,7 +92,7 @@ def create_quiz(
     # Generate grounded adaptive quiz
     # ---------------------------------------------------------
     try:
-        return generate_quiz(
+        generated = generate_quiz(
             concept=context["concept"],
             concept_description=context["concept_description"],
             student_level=context["student_level"],
@@ -101,4 +108,21 @@ def create_quiz(
                 "A grounded quiz question could not be generated "
                 f"for this concept: {error}"
             ),
-        )
+        ) from error
+
+    # Persist the expected answer server-side; the client only gets an id.
+    record = QuizQuestionRecord(
+        student_id=request.student_id,
+        concept_id=request.concept_id,
+        question_text=generated["question"],
+        expected_answer=generated["expected_answer"],
+        difficulty=generated.get("difficulty"),
+    )
+    db.add(record)
+    db.commit()
+
+    return QuizQuestion(
+        question_id=record.id,
+        question=record.question_text,
+        difficulty=record.difficulty or "medium",
+    )

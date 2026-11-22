@@ -7,6 +7,7 @@ from app.api.deps import (
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from app.core.config import settings
 
 from app.models.curriculum import Concept, Subject
 from app.db.database import SessionLocal
@@ -246,7 +247,7 @@ def get_student_profile(
 
     subject_groups = {}
 
-    for mastery, concept, subject in mastery_records:
+    for mastery, _concept, subject in mastery_records:
         if subject.id not in subject_groups:
             subject_groups[subject.id] = {
                 "subject_id": subject.id,
@@ -291,7 +292,8 @@ def get_student_profile(
         )
         .filter(
             ConceptMastery.student_id == profile.id,
-            ConceptMastery.mastery_score < 0.80,
+            ConceptMastery.mastery_score
+            < settings.prerequisite_mastery_threshold,
         )
         .order_by(
             ConceptMastery.mastery_score.asc()

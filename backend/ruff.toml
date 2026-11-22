@@ -1,0 +1,9 @@
+# Lint rules: pyflakes + pycodestyle errors + bugbear.
+# B008 is ignored because FastAPI's Depends()/File()/Form() in argument
+# defaults is the framework's idiom, not a bug.
+target-version = "py313"
+extend-exclude = ["alembic/versions"]
+
+[lint]
+select = ["E", "F", "B"]
+ignore = ["B008", "E501"]

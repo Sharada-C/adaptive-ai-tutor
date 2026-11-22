@@ -6,13 +6,15 @@ The application uses PostgreSQL with the pgvector extension. Configure the datab
 
 ## Fresh database setup
 
-For a new, empty database, run `python create_tables.py` from the `backend` directory with the backend virtual environment activated.
+For a new, empty database, run from the repository root with the backend virtual environment active:
 
-The script enables the PostgreSQL `vector` extension and creates missing tables and indexes from the registered SQLAlchemy models.
+```powershell
+python -m alembic -c .\alembic.ini upgrade head
+```
 
-**Important:** `create_tables.py` does not create Alembic migration history. After initializing a fresh database, do not assume it is ready for `alembic upgrade head`. The current initial Alembic revision, `3623a8b541cc`, creates only the `knowledge_chunks.subject_id` index and is not a complete baseline migration.
+The history is `0001_baseline` (every original table plus `CREATE EXTENSION IF NOT EXISTS vector`) -> `3623a8b541cc` (subject index on `knowledge_chunks`) -> `0002_auth_columns` (`password_hash`, `role`, `is_active`, case-insensitive unique username). `backend/tests/test_migrations.py` and CI prove that this produces the same schema as `Base.metadata.create_all()`.
 
-Until a complete baseline migration is implemented, fresh-database initialization and Alembic migration history must be handled as separate setup steps. Do not stamp a database at the current revision unless you have verified that its schema matches the revision's expected state.
+`python create_tables.py` still works for quick local setups and also runs `app/db/schema_upgrade.py`, a legacy safety guard for databases created before Alembic. Prefer Alembic for anything you keep.
 
 ## Alembic commands
 
@@ -42,12 +44,6 @@ Back up important data before applying schema changes. Never assume an autogener
 
 ## Existing databases
 
-The initial Alembic revision, `3623a8b541cc`, creates the `knowledge_chunks.subject_id` index only. It is not a complete baseline migration for creating every application table from scratch.
+Databases already recorded at `3623a8b541cc` (the original development database) need no manual step: that revision is preserved, now sitting after the baseline, so `alembic upgrade head` only applies `0002_auth_columns`, which is idempotent.
 
-The existing development database has recorded revision `3623a8b541cc`. Preserve this migration history; do not reset the database or rewrite the applied revision.
-
-Before adopting Alembic for another existing database, inspect its schema and migration history. Do not assume that running `create_tables.py` or `alembic upgrade head` alone will safely reconcile every pre-existing schema.
-
-## Important limitation
-
-Fresh database creation and Alembic migration history are currently separate setup paths. A complete baseline migration strategy for fresh installations has not yet been implemented.
+A database that was built by `create_tables.py` and has no `alembic_version` table: run `alembic stamp 3623a8b541cc`, then `alembic upgrade head`, then `alembic check`. Back up first.

@@ -28,7 +28,7 @@ docker compose up -d
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python create_tables.py
+python -m alembic -c ../alembic.ini upgrade head   # builds the schema
 python seed_demo.py            # demo "Computer Networks" course + study material
 uvicorn app.main:app --port 8000
 
@@ -40,6 +40,17 @@ npm run dev
 
 `seed_demo.py` needs Ollama to embed the sample material. Use
 `python seed_demo.py --skip-knowledge` to create only the course.
+
+### Everything in containers
+
+```bash
+cp .env.example .env     # set SECRET_KEY
+docker compose up --build
+```
+
+This starts Postgres, the API (it applies migrations on start) and the
+frontend at http://localhost:8080. Ollama still runs on your machine; the API
+reaches it through `host.docker.internal`.
 
 The status pill in the header shows whether the backend, database and AI model
 are reachable.
@@ -98,6 +109,9 @@ quizzes and the diagnostic for every concept in it.
 | backend `.env` | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` |
 | backend `.env` | `SECRET_KEY`, `ACCESS_TOKEN_MINUTES`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` | random key, 720, none |
 | backend `.env` | `OLLAMA_BASE_URL`, `LLM_MODEL`, `EMBEDDING_MODEL` | local Ollama, `llama3.2:3b`, `nomic-embed-text` |
+| backend `.env` | `OLLAMA_TIMEOUT_SECONDS`, `OLLAMA_RETRIES`, `OLLAMA_RETRY_BACKOFF_SECONDS` | 120, 1, 0.5 |
+| backend `.env` | `PREREQUISITE_MASTERY_THRESHOLD` | 0.80 |
+| backend `.env` | `MAX_UPLOAD_BYTES` | 10485760 (10 MB) |
 | `frontend/.env.local` | `VITE_API_BASE_URL` | `/api` |
 | `frontend/.env.local` | `VITE_PROXY_TARGET` | `http://127.0.0.1:8000` |
 
@@ -112,11 +126,12 @@ backend URL and add the frontend's origin to `CORS_ORIGINS`.
 ```bash
 # Backend – use a separate database, the tests create and remove rows
 createdb adaptive_tutor_test        # or create it in the docker container
+pip install -r backend/requirements-dev.txt
+export DATABASE_URL=postgresql+psycopg://tutor:tutor_password@localhost:5434/adaptive_tutor_test
+python -m alembic -c alembic.ini upgrade head
 cd backend
-DATABASE_URL=postgresql+psycopg://tutor:tutor_password@localhost:5434/adaptive_tutor_test \
-  python create_tables.py
-DATABASE_URL=postgresql+psycopg://tutor:tutor_password@localhost:5434/adaptive_tutor_test \
-  pytest
+pytest --cov=app                   # the database user needs CREATEDB (migration tests)
+ruff check .
 
 # Frontend
 cd frontend

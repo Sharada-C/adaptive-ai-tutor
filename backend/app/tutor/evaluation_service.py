@@ -1,7 +1,10 @@
 import json
+import logging
 import re
 
 from app.tutor.tutor_service import generate_response
+
+logger = logging.getLogger(__name__)
 
 
 PLACEHOLDER_MISCONCEPTIONS = {
@@ -128,11 +131,12 @@ def evaluate_answer(
     # True/False questions
     # ---------------------------------------------------------
     question_lower = question.lower()
-    print("\n===== TRUE/FALSE DEBUG =====")
-    print("QUESTION:", repr(question))
-    print("STUDENT ANSWER:", repr(student_answer))
-    print("EXPECTED ANSWER:", repr(expected_answer))
-    print("============================\n")
+    logger.debug(
+        "grading question=%r student_answer=%r expected_answer=%r",
+        question,
+        student_answer,
+        expected_answer,
+    )
     is_true_false = (
         "true or false" in question_lower
         or "is this statement true" in question_lower
@@ -313,24 +317,11 @@ Return ONLY the JSON object.
 
     response = generate_response(prompt).strip()
 
-    print("\n===== RAW LLM CLAIM ANALYSIS =====")
-    print(response)
-    print("==================================\n")
-    print("\n===== STUDENT ANSWER =====")
-    print(student_answer)
-
-    print("\n===== EXPECTED ANSWER =====")
-    print(expected_answer)
-
-    print("\n===== RAW LLM CLAIM ANALYSIS =====")
-    print(response)
-    print("==================================\n")
+    logger.debug("raw LLM claim analysis: %s", response)
 
     analysis = _extract_json_object(response)
 
-    print("\n===== EVALUATION CLAIMS =====")
-    print(json.dumps(analysis, indent=2))
-    print("=============================\n")
+    logger.debug("evaluation claims: %s", json.dumps(analysis))
 
     claims = analysis.get("claims", [])
 

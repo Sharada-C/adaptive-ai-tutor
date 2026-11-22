@@ -14,7 +14,7 @@ from app.core.security import (
 from app.db.database import SessionLocal
 from app.main import app
 from app.models import StudentProfile, User
-from tests.conftest import TEST_PASSWORD, ensure_account, token_for
+from tests.conftest import ensure_account, token_for
 
 
 # These tests are about who may do what, so the client starts anonymous.

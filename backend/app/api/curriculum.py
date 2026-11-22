@@ -16,23 +16,18 @@ from app.schemas.curriculum_generation import (
     GeneratedCurriculum,
 )
 
-from app.services.curriculum_generator import generate_curriculum
-
-router = APIRouter(
-    prefix="/subjects",
-    tags=["Curriculum"],
-)
 from app.schemas.curriculum_generation import (
-    CurriculumGenerateRequest,
-    GeneratedCurriculum,
     SavedCurriculumResponse,
 )
-
 from app.services.curriculum_generator import generate_curriculum
 from app.services.curriculum_persistence import (
     save_generated_curriculum,
 )
 
+router = APIRouter(
+    prefix="/subjects",
+    tags=["Curriculum"],
+)
 def get_db():
     db = SessionLocal()
 
@@ -179,7 +174,7 @@ def generate_new_curriculum(
         raise HTTPException(
             status_code=400,
             detail=str(error),
-        )
+        ) from error
 
     return SavedCurriculumResponse(
         subject_id=subject.id,
