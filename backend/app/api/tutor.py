@@ -142,10 +142,7 @@ def generate_lesson(
     else:
         misconception_text = "None identified."
 
-    retrieval_query = (
-        f"{context['concept']}. "
-        f"Student misconception: {misconception_text}"
-    )
+    retrieval_query = f"{context['concept']}. {context['concept_description'] or ''}"
 
     if misconceptions:
         retrieval_query += (
@@ -412,15 +409,9 @@ def reteach(
             detail=str(error),
         ) from error
 
-    misconceptions = context["misconceptions"]
+    # Only real, recorded misconceptions are shown to the student.
+    misconceptions = list(dict.fromkeys(context["misconceptions"]))
     has_specific_misconception = bool(misconceptions)
-
-    if not misconceptions:
-        misconceptions = [
-            "No specific misconception was identified. The student's mastery is low, so provide a clear explanation of the core ideas."
-        ]
-
-    misconceptions = list(dict.fromkeys(misconceptions))
 
     if has_specific_misconception:
         misconception_text = "\n".join(
@@ -433,10 +424,10 @@ def reteach(
     # Include the misconception in the retrieval query
     # so that the retrieved knowledge is relevant to the
     # specific misunderstanding.
-    retrieval_query = (
-        f"{context['concept']}. "
-        f"Student misconception: {misconception_text}"
-    )
+    retrieval_query = f"{context['concept']}. {context['concept_description'] or ''}"
+
+    if has_specific_misconception:
+        retrieval_query += f" Student misconception: {misconception_text}"
 
     concept = db.get(Concept, request.concept_id)
 

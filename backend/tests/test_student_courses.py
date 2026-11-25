@@ -380,3 +380,93 @@ def test_web_material_can_be_switched_off(monkeypatch):
 
     assert web_material.collect_material("binary search", []) == []
     assert calls == []
+
+
+def test_concept_articles_ground_their_own_concept(monkeypatch, people):
+    monkeypatch.setattr(
+        curriculum_api,
+        "collect_material",
+        lambda topic, names: [
+            Article("Overview", "https://en.wikipedia.org/wiki/Overview", ARTICLE_TEXT),
+            Article(
+                "Basics page",
+                "https://en.wikipedia.org/wiki/Basics",
+                ARTICLE_TEXT,
+                concept_name="Basics",
+            ),
+        ],
+    )
+
+    body = _create(people["a"]["headers"], f"Concept Material {people['tag']}").json()
+
+    db = SessionLocal()
+    concept = db.query(Concept).filter_by(subject_id=body["subject_id"], name="Basics").one()
+    own = db.query(KnowledgeChunk).filter_by(concept_id=concept.id).all()
+    shared = db.query(KnowledgeChunk).filter_by(subject_id=body["subject_id"]).all()
+    db.close()
+
+    assert own and all("Basics" in c.source for c in own)
+    assert shared and all("Overview" in c.source for c in shared)
+
+    # cleanup of concept-level chunks (the fixture removes subject-level ones)
+    db = SessionLocal()
+    db.query(KnowledgeChunk).filter_by(concept_id=concept.id).delete()
+    db.commit()
+    db.close()
+
+
+def test_collect_material_tags_one_article_per_concept(monkeypatch):
+    pages = {"Overview": LONG, "Stoma": LONG + " stoma", "Xylem": LONG + " xylem"}
+    seen_queries = []
+
+    def fake_get(url, params, headers, timeout):
+        if params.get("list") == "search":
+            query = params["srsearch"]
+            seen_queries.append(query)
+            title = (
+                "Overview" if query == "plants"
+                else "Stoma" if "stomata" in query else "Xylem"
+            )
+            return FakeResponse({"query": {"search": [{"title": title}]}})
+        title = params["titles"]
+        return FakeResponse({"query": {"pages": {"1": {
+            "title": title,
+            "fullurl": f"https://en.wikipedia.org/wiki/{title}",
+            "extract": pages[title],
+        }}}})
+
+    monkeypatch.setattr(web_material.requests, "get", fake_get)
+
+    articles = web_material.collect_material("plants", ["stomata", "water transport"])
+
+    assert [(a.title, a.concept_name) for a in articles] == [
+        ("Overview", None),
+        ("Stoma", "stomata"),
+        ("Xylem", "water transport"),
+    ]
+
+
+def test_reteach_does_not_invent_a_misconception(monkeypatch, people):
+    from app.api import tutor as tutor_api
+    from app.tutor.tutor_service import GroundedResult
+
+    body = _create(people["a"]["headers"], f"Reteach Topic {people['tag']}").json()
+    db = SessionLocal()
+    concept_id = db.query(Concept).filter_by(subject_id=body["subject_id"]).first().id
+    db.close()
+
+    monkeypatch.setattr(
+        tutor_api, "retrieve_knowledge", lambda **kwargs: ([], "No retrieved knowledge available.")
+    )
+    monkeypatch.setattr(
+        tutor_api, "grounded_response", lambda **kwargs: GroundedResult("text", "extractive")
+    )
+
+    response = client.post(
+        "/tutor/reteach",
+        headers=people["a"]["headers"],
+        json={"student_id": people["a"]["student_id"], "concept_id": concept_id},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["misconceptions"] == []

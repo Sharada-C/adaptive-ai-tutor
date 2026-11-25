@@ -79,3 +79,12 @@ def test_fallback_lesson_uses_the_focus(monkeypatch):
     assert result.mode == "extractive"
     assert "Cell walls provide shape" in result.text
     assert "Companion cells" not in result.text
+
+
+def test_off_topic_evidence_is_not_shown_as_the_lesson():
+    lesson = build_evidence_lesson(
+        _evidence(XYLEM, XYLEM), focus="Stomatal movement. Guard cells open and close."
+    )
+
+    assert "Xylem" not in lesson
+    assert "does not cover this concept" in lesson

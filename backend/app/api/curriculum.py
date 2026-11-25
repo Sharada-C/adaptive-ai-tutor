@@ -27,7 +27,10 @@ from app.schemas.curriculum_generation import (
     TopicCourseRequest,
     TopicCourseResponse,
 )
-from app.rag.knowledge_ingestion import ingest_text_for_subject
+from app.rag.knowledge_ingestion import (
+    ingest_text_for_concept,
+    ingest_text_for_subject,
+)
 from app.services.web_material import collect_material
 from app.services.curriculum_generator import generate_curriculum
 from app.services.curriculum_persistence import (
@@ -203,16 +206,24 @@ def _attach_wikipedia_material(db: Session, subject: Subject) -> MaterialSummary
     articles: list[str] = []
     chunks = 0
 
-    for article in collect_material(
-        subject.name, [concept.name for concept in subject.concepts]
-    ):
+    concept_ids = {concept.name: concept.id for concept in subject.concepts}
+
+    for article in collect_material(subject.name, list(concept_ids)):
         try:
-            inserted = ingest_text_for_subject(
-                db=db,
-                subject_id=subject.id,
-                text=article.text,
-                source=article.source,
-            )
+            if article.concept_name in concept_ids:
+                inserted = ingest_text_for_concept(
+                    db=db,
+                    concept_id=concept_ids[article.concept_name],
+                    text=article.text,
+                    source=article.source,
+                )
+            else:
+                inserted = ingest_text_for_subject(
+                    db=db,
+                    subject_id=subject.id,
+                    text=article.text,
+                    source=article.source,
+                )
         except Exception as error:
             db.rollback()
             logger.warning("Could not store %s: %s", article.title, error)

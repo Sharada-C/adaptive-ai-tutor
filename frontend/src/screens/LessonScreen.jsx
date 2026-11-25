@@ -7,6 +7,8 @@ export default function LessonScreen({
   onStartQuiz,
   onGenerateLesson,
   onViewProgress,
+  onViewLibrary,
+  onNewTopic,
 }) {
   return (
     <main className="main-content">
@@ -48,6 +50,26 @@ export default function LessonScreen({
               {loadingProgress ? "Loading Progress..." : "View Your Progress"}
               <span>→</span>
             </button>
+
+            {onViewLibrary && (
+              <button
+                type="button"
+                className="skip-diagnostic-button"
+                onClick={onViewLibrary}
+              >
+                See what you've learned
+              </button>
+            )}
+
+            {onNewTopic && (
+              <button
+                type="button"
+                className="skip-diagnostic-button"
+                onClick={onNewTopic}
+              >
+                Learn something new
+              </button>
+            )}
           </>
         )}
 

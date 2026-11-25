@@ -9,7 +9,7 @@ as its source so answers can be traced back and attributed.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import requests
 
@@ -27,6 +27,8 @@ class Article:
     title: str
     url: str
     text: str
+    # Set when the article was found for one concept of the course.
+    concept_name: str | None = None
 
     @property
     def source(self) -> str:
@@ -51,7 +53,7 @@ def _search(query: str, limit: int) -> list[str]:
     return [hit["title"] for hit in data.get("query", {}).get("search", [])]
 
 
-def _fetch(title: str) -> Article | None:
+def _fetch(title: str, max_words: int | None = None) -> Article | None:
     data = _get(
         {
             "action": "query",
@@ -72,7 +74,7 @@ def _fetch(title: str) -> Article | None:
         if len(words) < MIN_WORDS or any(m in head for m in DISAMBIGUATION_MARKERS):
             return None
 
-        words = words[: settings.web_material_max_words]
+        words = words[: min(max_words or 10**9, settings.web_material_max_words)]
         return Article(
             title=page.get("title", title),
             url=page.get("fullurl", ""),
@@ -83,7 +85,8 @@ def _fetch(title: str) -> Article | None:
 
 
 def collect_material(topic: str, concept_names: list[str]) -> list[Article]:
-    """Best-effort: top articles for the topic, then one per concept."""
+    """Best-effort: top articles for the topic, then one article per concept
+    (tagged with ``concept_name`` so it can ground that concept directly)."""
 
     if not settings.web_material_enabled:
         return []
@@ -92,21 +95,35 @@ def collect_material(topic: str, concept_names: list[str]) -> list[Article]:
     articles: list[Article] = []
     seen: set[str] = set()
 
-    queries = [(topic, 3)] + [(f"{topic} {name}", 1) for name in concept_names]
-
     try:
-        for query, per_query in queries:
-            for title in _search(query, per_query):
-                if len(articles) >= limit:
-                    return articles
+        for title in _search(topic, 3):
+            if len(articles) >= limit:
+                return articles
 
-                article = _fetch(title)
+            article = _fetch(title)
+
+            if article is None or article.title in seen:
+                continue
+
+            seen.add(article.title)
+            articles.append(article)
+
+        for name in concept_names:
+            if len(articles) >= limit:
+                break
+
+            for title in _search(f"{topic} {name}", 2):
+                if title in seen:
+                    continue
+
+                article = _fetch(title, settings.web_material_concept_words)
 
                 if article is None or article.title in seen:
                     continue
 
                 seen.add(article.title)
-                articles.append(article)
+                articles.append(replace(article, concept_name=name))
+                break
     except (requests.RequestException, ValueError, KeyError) as error:
         logger.warning("Wikipedia lookup failed: %s", error)
 

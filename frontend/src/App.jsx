@@ -13,6 +13,7 @@ import LessonScreen from "./screens/LessonScreen";
 import QuizScreen from "./screens/QuizScreen";
 import ReteachScreen from "./screens/ReteachScreen";
 import ProgressScreen from "./screens/ProgressScreen";
+import LibraryScreen from "./screens/LibraryScreen";
 
 // The planner is asked again after an "advance" decision. If the planner
 // and the action service ever disagree, that would loop forever, so the
@@ -251,6 +252,48 @@ function Tutor({
       loadProgress();
     }
   }, [screen, loadProgress]);
+
+  // ----------------------------------------------------------
+  // Library ("My learning")
+  // ----------------------------------------------------------
+
+  const [library, setLibrary] = useState([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [libraryError, setLibraryError] = useState("");
+
+  useEffect(() => {
+    if (screen !== "library") {
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoadingLibrary(true);
+        setLibraryError("");
+        const courses = await api.getLibrary(studentId);
+
+        if (!cancelled) {
+          setLibrary(courses);
+        }
+      } catch (error) {
+        console.error(error);
+
+        if (!cancelled) {
+          setLibraryError(error.message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingLibrary(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [screen, studentId]);
 
   // ============================================================
   // SETUP ACTIONS
@@ -521,8 +564,14 @@ function Tutor({
 
   // Asks the planner which concept comes next, asks the adaptive engine
   // what to do with it, and opens the matching screen.
-  const continueLearning = async () => {
-    if (!activeSubjectId) {
+  const continueLearning = async (subjectOverride) => {
+    // Used as an onClick handler too, so only accept a real id.
+    const targetSubjectId =
+      typeof subjectOverride === "string" || typeof subjectOverride === "number"
+        ? String(subjectOverride)
+        : activeSubjectId;
+
+    if (!targetSubjectId) {
       setNotice({ type: "error", message: "Subject information is missing." });
       return;
     }
@@ -534,7 +583,7 @@ function Tutor({
         // Step 1: which concept is next?
         const planned = await api.getNextConcept(
           studentId,
-          Number(activeSubjectId)
+          Number(targetSubjectId)
         );
 
         // Step 2: nothing left to learn.
@@ -599,6 +648,17 @@ function Tutor({
     } finally {
       setLoadingLesson(false);
     }
+  };
+
+  // From "My learning": switch to that course and carry on where the
+  // learner left off.
+  const continueCourse = async (courseId) => {
+    handleSubjectChange(String(courseId));
+    await continueLearning(courseId);
+  };
+
+  const showNewTopic = () => {
+    setScreen("setup");
   };
 
   // ============================================================
@@ -680,6 +740,18 @@ function Tutor({
         onBack={() => setScreen("setup")}
       />
     );
+  } else if (screen === "library") {
+    content = (
+      <LibraryScreen
+        courses={library}
+        loading={loadingLibrary}
+        error={libraryError}
+        loadJournal={(subjectId) => api.getJournal(studentId, subjectId)}
+        onContinue={continueCourse}
+        onNewTopic={showNewTopic}
+        busy={loadingLesson}
+      />
+    );
   } else if (screen === "progress") {
     content = (
       <ProgressScreen
@@ -693,6 +765,8 @@ function Tutor({
         error={progressError}
         onContinue={continueLearning}
         loadingLesson={loadingLesson}
+        onViewLibrary={() => setScreen("library")}
+        onNewTopic={showNewTopic}
       />
     );
   } else if (screen === "reteach" && reteachData) {
@@ -714,6 +788,8 @@ function Tutor({
         onStartQuiz={() => startQuiz(nextConcept)}
         onGenerateLesson={continueLearning}
         onViewProgress={() => setScreen("progress")}
+        onViewLibrary={() => setScreen("library")}
+        onNewTopic={showNewTopic}
       />
     );
   } else if (screen === "quiz" && quiz) {
@@ -788,6 +864,11 @@ function Tutor({
         onSignOut={onSignOut}
         onShowAdmin={
           isAdmin && screen !== "admin" ? () => setScreen("admin") : undefined
+        }
+        onShowLibrary={
+          screen !== "library" && screen !== "admin"
+            ? () => setScreen("library")
+            : undefined
         }
         onShowProgress={
           activeSubjectId && screen !== "progress" && screen !== "admin"

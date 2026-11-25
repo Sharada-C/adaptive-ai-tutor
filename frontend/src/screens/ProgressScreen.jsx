@@ -21,6 +21,8 @@ export default function ProgressScreen({
   error,
   onContinue,
   loadingLesson,
+  onViewLibrary,
+  onNewTopic,
 }) {
   const conceptMap = new Map(concepts.map((concept) => [concept.id, concept]));
 
@@ -283,6 +285,26 @@ export default function ProgressScreen({
               {loadingLesson ? "Preparing..." : "Continue Learning"}
               <span>→</span>
             </button>
+
+            {onViewLibrary && (
+              <button
+                type="button"
+                className="skip-diagnostic-button"
+                onClick={onViewLibrary}
+              >
+                What I've learned
+              </button>
+            )}
+
+            {onNewTopic && (
+              <button
+                type="button"
+                className="skip-diagnostic-button"
+                onClick={onNewTopic}
+              >
+                Learn something new
+              </button>
+            )}
           </>
         )}
       </section>

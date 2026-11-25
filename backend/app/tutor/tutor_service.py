@@ -230,6 +230,24 @@ def _select_relevant(sentences: list[str], focus: str) -> list[str]:
 
     focus_stems = _focus_stems(focus)
 
+    # Sentences that share nothing with the concept are noise, not evidence.
+    if focus_stems:
+        # The concept name comes first in ``focus``; a sentence must mention
+        # it, or share at least two words with the whole focus.
+        name_stems = _focus_stems(focus.split(". ")[0])
+
+        related = [
+            s
+            for s in sentences
+            if (_focus_stems(s) & name_stems)
+            or len(_focus_stems(s) & focus_stems) >= 2
+        ]
+
+        if not related:
+            return []
+
+        sentences = related
+
     # Very long sentences are usually list dumps; prefer concise ones
     # unless there is nothing else.
     concise = [
@@ -340,6 +358,12 @@ def build_evidence_lesson(
             all_sentences.append(sentence)
 
     selected = _select_relevant(all_sentences, focus)
+
+    if not selected:
+        return (
+            "The study material does not cover this concept in detail yet. "
+            "Upload notes or a PDF for it to get a grounded explanation."
+        )
 
     return " ".join(selected)
 

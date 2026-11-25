@@ -161,6 +161,12 @@ export const getProfile = (userId) => request(`/students/${userId}/profile`);
 export const getMastery = (studentId) =>
   request(`/students/${studentId}/mastery`);
 
+export const getLibrary = (studentId) =>
+  request(`/students/${studentId}/library`);
+
+export const getJournal = (studentId, subjectId) =>
+  request(`/students/${studentId}/subjects/${subjectId}/journal`);
+
 // ------------------------------------------------------------
 // Curriculum
 // ------------------------------------------------------------
