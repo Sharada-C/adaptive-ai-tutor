@@ -202,6 +202,37 @@ function Tutor({
     null
   );
 
+  // Make the browser's Back and Forward buttons move between the app's
+  // screens instead of leaving the site. Each screen change adds a history
+  // entry; going back restores the previous screen.
+  useEffect(() => {
+    const onPopState = (event) => {
+      const target = event.state?.tutorScreen;
+
+      if (target) {
+        setScreen(target);
+      }
+    };
+
+    window.addEventListener("popstate", onPopState);
+
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [setScreen]);
+
+  useEffect(() => {
+    const current = window.history.state?.tutorScreen;
+
+    if (current === screen) {
+      return;
+    }
+
+    if (current === undefined) {
+      window.history.replaceState({ tutorScreen: screen }, "");
+    } else {
+      window.history.pushState({ tutorScreen: screen }, "");
+    }
+  }, [screen]);
+
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState(null);
   const [submitting, setSubmitting] = useState(false);
