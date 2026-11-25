@@ -435,6 +435,22 @@ describe("my learning", () => {
     await waitFor(() => expect(api.getNextConcept).toHaveBeenCalledWith(3, 1));
   });
 
+  it("lets the browser's Back button return to the previous screen", async () => {
+    api.getLibrary.mockResolvedValue([COURSE]);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Computer Networks");
+    await user.click(screen.getByRole("button", { name: /my learning/i }));
+    await screen.findByText(/Photosynthesis \(my course\)/);
+
+    window.history.back();
+
+    expect(await screen.findByLabelText(/type any topic/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Photosynthesis \(my course\)/)).not.toBeInTheDocument();
+  });
+
   it("offers a new topic from the library", async () => {
     api.getLibrary.mockResolvedValue([]);
 
