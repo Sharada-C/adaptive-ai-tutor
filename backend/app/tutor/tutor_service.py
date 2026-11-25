@@ -36,6 +36,15 @@ def generate_response(prompt: str, model: str | None = None) -> str:
     return generated_text
 
 
+def _predicate_base(word: str, markers: set[str]) -> str:
+    """'uses' and 'use' are the same predicate."""
+
+    if word.endswith("s") and word[:-1] in markers:
+        return word[:-1]
+
+    return word
+
+
 def validate_grounding(
     response: str,
     retrieved_knowledge: str,
@@ -139,13 +148,13 @@ def validate_grounding(
         # If the response introduces a factual predicate that does not
         # appear anywhere in the evidence, reject it.
         response_predicates = {
-            word
+            _predicate_base(word, predicate_markers)
             for word in words
             if word in predicate_markers
         }
 
         evidence_predicates = {
-            word
+            _predicate_base(word, predicate_markers)
             for word in re.findall(
                 r"\b[a-zA-Z0-9]+\b",
                 retrieved_knowledge.lower(),

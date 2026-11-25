@@ -2,11 +2,47 @@ import json
 import logging
 
 from app.tutor.tutor_service import (
+    build_evidence_lesson,
     generate_response,
     validate_grounding,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def difficulty_for(mastery_score: float) -> str:
+    if mastery_score < 0.4:
+        return "easy"
+    if mastery_score <= 0.7:
+        return "medium"
+    return "hard"
+
+
+def build_evidence_quiz(
+    concept: str,
+    concept_description: str | None,
+    mastery_score: float,
+    knowledge_text: str,
+) -> dict:
+    """A question whose expected answer is taken from the retrieved
+    material itself, so it is grounded by construction. Used when the
+    model's own drafts keep failing the grounding check."""
+
+    evidence = knowledge_text.strip()
+
+    if not evidence or evidence.lower() == "no retrieved knowledge available.":
+        raise ValueError("Cannot generate a quiz without retrieved knowledge.")
+
+    expected = build_evidence_lesson(
+        evidence,
+        focus=f"{concept}. {concept_description or ''}",
+    )
+
+    return {
+        "question": f"In your own words, explain: {concept}.",
+        "expected_answer": expected,
+        "difficulty": difficulty_for(mastery_score),
+    }
 
 
 def generate_quiz(

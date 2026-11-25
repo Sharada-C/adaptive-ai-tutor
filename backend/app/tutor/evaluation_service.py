@@ -35,14 +35,20 @@ def _extract_json_object(response: str) -> dict:
         .strip()
     )
 
-    try:
-        parsed = json.loads(response)
+    # Models often write LaTeX such as \( or \text inside strings. A lone
+    # backslash that does not start a valid JSON escape is doubled so the
+    # reply still parses.
+    for candidate in (response, _repair_escapes(response)):
+        try:
+            parsed = json.loads(candidate)
 
-        if isinstance(parsed, dict):
-            return parsed
+            if isinstance(parsed, dict):
+                return parsed
 
-    except json.JSONDecodeError:
-        pass
+        except json.JSONDecodeError:
+            continue
+
+    response = _repair_escapes(response)
 
     decoder = json.JSONDecoder()
 
@@ -61,6 +67,12 @@ def _extract_json_object(response: str) -> dict:
     raise ValueError(
         f"LLM returned invalid JSON: {response}"
     )
+
+
+def _repair_escapes(text: str) -> str:
+    """Double backslashes that are not valid JSON escape sequences."""
+
+    return re.sub(r'\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', r"\\\\", text)
 
 
 def _normalize_text(text: str) -> str:
@@ -117,7 +129,13 @@ def _analyze_claims(
 
     logger.debug("raw LLM claim analysis: %s", response)
 
-    analysis = _extract_json_object(response)
+    try:
+        analysis = _extract_json_object(response)
+    except ValueError:
+        # Unparseable output must never crash grading; the caller retries
+        # and then falls back to keyword recall.
+        logger.warning("grader returned unparseable JSON")
+        return []
 
     logger.debug("evaluation claims: %s", json.dumps(analysis))
 
