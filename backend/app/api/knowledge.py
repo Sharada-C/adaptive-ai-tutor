@@ -2,7 +2,12 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from pypdf.errors import PdfReadError, PdfStreamError
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from app.api.deps import require_staff
+from app.api.deps import (
+    ensure_can_add_material,
+    ensure_concept_access,
+    ensure_subject_access,
+    get_current_user,
+)
 from app.models.student import User
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -76,6 +81,18 @@ def _save_upload(file: UploadFile) -> Path:
     return path
 
 
+def _authorize_subject(db: Session, user: User, subject_id: int) -> None:
+    """Staff may add to shared courses; students only to their own."""
+
+    subject = ensure_subject_access(db, user, subject_id)
+    ensure_can_add_material(db, user, subject)
+
+
+def _authorize_concept(db: Session, user: User, concept_id: int) -> None:
+    concept = ensure_concept_access(db, user, concept_id)
+    ensure_can_add_material(db, user, concept.subject)
+
+
 def _unreadable_pdf() -> HTTPException:
     return HTTPException(
         status_code=422,
@@ -115,8 +132,10 @@ def get_db():
 def ingest_knowledge(
     request: KnowledgeIngestRequest,
     db: Session = Depends(get_db),
-    _staff: User = Depends(require_staff),
+    user: User = Depends(get_current_user),
 ):
+    _authorize_concept(db, user, request.concept_id)
+
     try:
         inserted = ingest_text_for_concept(
             db=db,
@@ -141,8 +160,9 @@ def upload_knowledge_file(
     concept_id: int = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _staff: User = Depends(require_staff),
+    user: User = Depends(get_current_user),
 ):
+    _authorize_concept(db, user, concept_id)
     temporary_path = None
 
     try:
@@ -187,8 +207,10 @@ def upload_knowledge_file(
 def ingest_subject_knowledge(
     request: SubjectKnowledgeIngestRequest,
     db: Session = Depends(get_db),
-    _staff: User = Depends(require_staff),
+    user: User = Depends(get_current_user),
 ):
+    _authorize_subject(db, user, request.subject_id)
+
     try:
         inserted = ingest_text_for_subject(
             db=db,
@@ -218,8 +240,9 @@ def upload_subject_knowledge_file(
     subject_id: int = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _staff: User = Depends(require_staff),
+    user: User = Depends(get_current_user),
 ):
+    _authorize_subject(db, user, subject_id)
     temporary_path = None
 
     try:

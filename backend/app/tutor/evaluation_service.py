@@ -2,6 +2,7 @@ import json
 import logging
 import re
 
+from app.core.config import settings
 from app.tutor.tutor_service import generate_response
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,189 @@ def _evidence_is_in_answer(evidence: str, student_answer: str) -> bool:
     present = sum(1 for word in evidence_words if word in answer_words)
 
     return present / len(evidence_words) >= 0.85
+
+
+def _judge(prompt: str) -> str:
+    """Call the grading model (``GRADER_MODEL``, else the tutor model)."""
+
+    if settings.grader_model:
+        return generate_response(prompt, model=settings.grader_model)
+
+    return generate_response(prompt)
+
+
+def _analyze_claims(
+    prompt: str,
+    student_answer: str,
+    expected_answer: str,
+) -> list[dict]:
+    """One model call -> validated claims (invented ones dropped)."""
+
+    response = _judge(prompt).strip()
+
+    logger.debug("raw LLM claim analysis: %s", response)
+
+    analysis = _extract_json_object(response)
+
+    logger.debug("evaluation claims: %s", json.dumps(analysis))
+
+    claims = analysis.get("claims", [])
+
+    if not isinstance(claims, list):
+        claims = []
+
+    normalized_claims = []
+
+    for claim_data in claims:
+
+        if not isinstance(claim_data, dict):
+            continue
+
+        claim = str(
+            claim_data.get("claim", "")
+        ).strip()
+
+        assessment = str(
+            claim_data.get("assessment", "")
+        ).strip().lower()
+
+        if not claim:
+            continue
+
+        # Reject claims that are not traceable to the student's words.
+        # (Older responses without an "evidence" field are still accepted.)
+        evidence = claim_data.get("evidence")
+
+        if evidence is not None and not _evidence_is_in_answer(
+            str(evidence),
+            student_answer,
+        ):
+            continue
+
+        if assessment not in {
+            "supported",
+            "contradicts_expected",
+            "unrelated",
+        }:
+            continue
+
+        if assessment == "contradicts_expected" and _restates_expected(
+            claim, expected_answer
+        ):
+            assessment = "supported"
+
+        normalized_claims.append(
+            {
+                "claim": claim,
+                "assessment": assessment,
+                "evidence": str(evidence).strip() if evidence else "",
+            }
+        )
+
+    return normalized_claims
+
+
+_STOPWORDS = frozenset(
+    "a an the of to in on for and or but is are was were be been being it its "
+    "this that these those as at by with from into than then so such which "
+    "who whom what when where while how why not no can could may might will "
+    "would should has have had do does did their there they them he she his "
+    "her you your i we our us".split()
+)
+
+
+def _stems(text: str) -> set[str]:
+    """Content words reduced to 5-letter prefixes ("protection"~"protect")."""
+
+    return {
+        word[:5]
+        for word in _normalize_text(text).split()
+        if word not in _STOPWORDS and len(word) > 2
+    }
+
+
+def _keyword_recall(question: str, expected_answer: str, student_answer: str) -> float:
+    """Share of the expected answer's own key words found in the answer.
+
+    Words that already appear in the question are ignored, so an answer
+    that merely repeats the question scores 0.
+    """
+
+    needed = _stems(expected_answer) - _stems(question)
+
+    if not needed:
+        return 0.0
+
+    return len(needed & _stems(student_answer)) / len(needed)
+
+
+def _second_opinion(
+    question: str,
+    expected_answer: str,
+    statement: str,
+) -> str:
+    """Second opinion on a flagged contradiction: consistent / conflicts / unclear.
+
+    The long claim-extraction prompt makes small models over-flag errors,
+    so a flagged statement is checked with one simple question. Only an
+    explicit answer counts; an unclear reply or a model failure is
+    "unclear" and never confirms the contradiction.
+    """
+
+    prompt = f"""You are checking a student's statement against a reference answer.
+
+QUESTION:
+{question}
+
+REFERENCE ANSWER:
+{expected_answer}
+
+STUDENT STATEMENT:
+{statement}
+
+Is the student statement consistent with the reference answer (same meaning,
+possibly worded differently, less detailed, or with extra correct detail), or
+does it say something that conflicts with it?
+
+Reply with exactly one word: CONSISTENT or CONFLICTS."""
+
+    try:
+        reply = _judge(prompt).upper()
+    except Exception as error:
+        logger.warning("contradiction check failed: %s", error)
+        return "unclear"
+
+    words = set(re.findall(r"\b(CONSISTENT|CONFLICTS)\b", reply))
+
+    if words == {"CONSISTENT"}:
+        return "consistent"
+
+    if words == {"CONFLICTS"}:
+        return "conflicts"
+
+    return "unclear"
+
+
+def _restates_expected(claim: str, expected_answer: str) -> bool:
+    """True if a long claim is essentially the expected answer itself.
+
+    A statement that matches the reference answer cannot contradict it.
+    Small models sometimes label the reference fact as the student's
+    "contradicting" belief. Only long claims are checked (a one-word
+    difference in a short sentence, "increases" vs "decreases", is a real
+    contradiction).
+    """
+
+    claim_words = _normalize_text(claim).split()
+    expected_words = _normalize_text(expected_answer).split()
+
+    if len(claim_words) < 8 or not expected_words:
+        return False
+
+    shared = set(claim_words) & set(expected_words)
+    union = set(claim_words) | set(expected_words)
+
+    return len(shared) / len(union) >= 0.9
 
 
 def evaluate_answer(
@@ -315,60 +499,30 @@ Do not include misconception.
 Return ONLY the JSON object.
 """
 
-    response = generate_response(prompt).strip()
+    normalized_claims = _analyze_claims(prompt, student_answer, expected_answer)
 
-    logger.debug("raw LLM claim analysis: %s", response)
-
-    analysis = _extract_json_object(response)
-
-    logger.debug("evaluation claims: %s", json.dumps(analysis))
-
-    claims = analysis.get("claims", [])
-
-    if not isinstance(claims, list):
-        claims = []
-
-    normalized_claims = []
-
-    for claim_data in claims:
-
-        if not isinstance(claim_data, dict):
-            continue
-
-        claim = str(
-            claim_data.get("claim", "")
-        ).strip()
-
-        assessment = str(
-            claim_data.get("assessment", "")
-        ).strip().lower()
-
-        if not claim:
-            continue
-
-        # Reject claims that are not traceable to the student's words.
-        # (Older responses without an "evidence" field are still accepted.)
-        evidence = claim_data.get("evidence")
-
-        if evidence is not None and not _evidence_is_in_answer(
-            str(evidence),
-            student_answer,
-        ):
-            continue
-
-        if assessment not in {
-            "supported",
-            "contradicts_expected",
-            "unrelated",
-        }:
-            continue
-
-        normalized_claims.append(
-            {
-                "claim": claim,
-                "assessment": assessment,
-            }
+    # Small local models sometimes return no usable claims at all. The
+    # output is not deterministic, so one more attempt is worthwhile.
+    if not any(c["assessment"] != "unrelated" for c in normalized_claims):
+        normalized_claims = _analyze_claims(
+            prompt, student_answer, expected_answer
         )
+
+    # A flagged contradiction only stands if a second, simpler check agrees.
+    for item in normalized_claims:
+        if item["assessment"] != "contradicts_expected":
+            continue
+
+        verdict = _second_opinion(
+            question,
+            expected_answer,
+            item["evidence"] or item["claim"],
+        )
+
+        if verdict == "consistent":
+            item["assessment"] = "supported"
+        elif verdict == "unclear":
+            item["assessment"] = "unconfirmed"
 
     contradictory_claims = [
         item
@@ -394,12 +548,19 @@ Return ONLY the JSON object.
 
     if contradictory_claims:
 
-        misconception = contradictory_claims[0]["claim"]
+        first = contradictory_claims[0]
+        misconception = first["claim"]
 
-        feedback = (
-            "The answer contains a conceptual error: "
-            f"{misconception}"
-        )
+        if first["evidence"]:
+            feedback = (
+                f'You wrote "{first["evidence"]}", which conflicts with '
+                f"the expected answer: {expected_answer.strip()}"
+            )
+        else:
+            feedback = (
+                "The answer contains a conceptual error: "
+                f"{misconception}"
+            )
 
         return {
             "score": 0.3,
@@ -412,10 +573,61 @@ Return ONLY the JSON object.
         }
 
     # ---------------------------------------------------------
+    # 1b. Flagged but not confirmed: mark for review, never record a
+    #     misconception (it may be the model's mistake).
+    # ---------------------------------------------------------
+
+    unconfirmed_claims = [
+        item
+        for item in normalized_claims
+        if item["assessment"] == "unconfirmed"
+    ]
+
+    if unconfirmed_claims:
+        quoted = unconfirmed_claims[0]["evidence"]
+        subject = f'"{quoted}"' if quoted else "part of your answer"
+
+        return {
+            "score": 0.5,
+            "result": "partially_correct",
+            "feedback": (
+                f"{subject[0].upper() + subject[1:]} may not match the "
+                f"expected answer: {expected_answer.strip()}"
+            ),
+            "misconception": None,
+        }
+
+    # ---------------------------------------------------------
     # 2. No contradiction + no meaningful understanding
     # ---------------------------------------------------------
 
     if not meaningful_claims:
+
+        # The model gave nothing usable (twice). Do not punish the
+        # student for that: fall back to a conservative keyword check
+        # against the expected answer.
+        recall = _keyword_recall(question, expected_answer, student_answer)
+
+        if recall >= 0.5:
+            return {
+                "score": 1.0,
+                "result": "correct",
+                "feedback": (
+                    "The answer covers the key points of the expected answer."
+                ),
+                "misconception": None,
+            }
+
+        if recall >= 0.25:
+            return {
+                "score": 0.5,
+                "result": "partially_correct",
+                "feedback": (
+                    "The answer covers some key points of the expected "
+                    "answer but not all of them."
+                ),
+                "misconception": None,
+            }
 
         return {
             "score": 0.0,

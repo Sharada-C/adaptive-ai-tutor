@@ -47,7 +47,13 @@ def find_prerequisite_cycle(
 def save_generated_curriculum(
     db: Session,
     curriculum: GeneratedCurriculum,
+    owner_id: int | None = None,
 ) -> Subject:
+    """Validate and store a generated curriculum.
+
+    ``owner_id`` makes the course private to that user; names only have to
+    be unique among the same owner's courses (or among shared courses).
+    """
 
     # ---------------------------------------------------------
     # 1. Check whether subject already exists
@@ -56,7 +62,10 @@ def save_generated_curriculum(
     existing_subject = (
         db.query(Subject)
         .filter(
-            Subject.name == curriculum.subject
+            Subject.name == curriculum.subject.strip(),
+            Subject.owner_id == owner_id
+            if owner_id is not None
+            else Subject.owner_id.is_(None),
         )
         .first()
     )
@@ -132,6 +141,7 @@ def save_generated_curriculum(
     subject = Subject(
         name=curriculum.subject.strip(),
         description=curriculum.description.strip(),
+        owner_id=owner_id,
     )
 
     db.add(subject)

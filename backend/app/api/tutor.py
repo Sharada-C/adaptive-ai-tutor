@@ -1,7 +1,11 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from app.api.deps import ensure_student_access, get_current_user
+from app.api.deps import (
+    ensure_concept_access,
+    ensure_student_access,
+    get_current_user,
+)
 from app.models.student import User
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -107,6 +111,8 @@ def generate_lesson(
         request.student_id,
         allow_staff=False,
     )
+
+    ensure_concept_access(db, current_user, request.concept_id)
 
     locked = locked_concept_detail(db, request.student_id, request.concept_id)
 
@@ -357,6 +363,7 @@ Return only the lesson and one final understanding-check question.
     result = grounded_response(
         prompt=prompt,
         retrieved_knowledge=knowledge_text,
+        focus=f"{context['concept']}. {context['concept_description'] or ''}",
     )
 
     return LessonResponse(
@@ -389,6 +396,8 @@ def reteach(
         request.student_id,
         allow_staff=False,
     )
+
+    ensure_concept_access(db, current_user, request.concept_id)
 
     try:
         context = build_tutor_context(
@@ -557,6 +566,7 @@ Return the teaching explanation and the checking question.
     result = grounded_response(
         prompt=prompt,
         retrieved_knowledge=knowledge_text,
+        focus=f"{context['concept']}. {context['concept_description'] or ''}",
     )
 
     return ReteachResponse(

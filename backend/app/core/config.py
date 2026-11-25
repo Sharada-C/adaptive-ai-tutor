@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Ollama serves both the LLM and the embedding model.
     ollama_base_url: str = "http://127.0.0.1:11434"
     llm_model: str = "llama3.2:3b"
+    # Optional separate (usually larger) model used only for grading answers.
+    # Empty = use llm_model.
+    grader_model: str = ""
     embedding_model: str = "nomic-embed-text"
 
     # A concept is 'mastered', and unlocks what depends on it, at this score.
@@ -35,6 +38,16 @@ class Settings(BaseSettings):
     ollama_timeout_seconds: float = 120.0
     ollama_retries: int = 1
     ollama_retry_backoff_seconds: float = 0.5
+
+    # Study material fetched automatically for student-created courses.
+    web_material_enabled: bool = True
+    wikipedia_api_url: str = "https://en.wikipedia.org/w/api.php"
+    web_material_max_articles: int = 6
+    web_material_max_words: int = 3000
+    web_material_timeout_seconds: float = 10.0
+
+    # How many private courses one student may create.
+    max_courses_per_user: int = 25
 
     # Largest accepted knowledge-base upload.
     max_upload_bytes: int = 10 * 1024 * 1024

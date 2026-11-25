@@ -286,20 +286,33 @@ function Tutor({
     try {
       setGenerating(true);
 
-      const created = await api.generateCourse(topic);
+      const created = isStaff
+        ? await api.generateCourse(topic)
+        : await api.createCourseFromTopic(topic);
 
       await loadSubjects();
 
       handleSubjectChange(String(created.subject_id));
       setCourseTopic("");
 
-      setNotice({
-        type: "success",
-        message:
-          `Created "${created.subject}" with ${created.concepts_created} ` +
-          "concepts. Upload some study material so the tutor has " +
-          "something to teach from.",
-      });
+      if (isStaff) {
+        setNotice({
+          type: "success",
+          message:
+            `Created "${created.subject}" with ${created.concepts_created} ` +
+            "concepts. Upload some study material so the tutor has " +
+            "something to teach from.",
+        });
+      } else if (!created.created) {
+        setNotice({ type: "success", message: created.message });
+      } else {
+        setNotice({
+          type: created.needs_material ? "error" : "success",
+          message:
+            `Created "${created.subject}" with ${created.concepts_created} ` +
+            `concepts. ${created.message}`,
+        });
+      }
     } catch (error) {
       showError(error);
     } finally {
@@ -756,7 +769,11 @@ function Tutor({
         starting={starting}
         onSkip={handleSkipDiagnostic}
         loadingLesson={loadingLesson}
-        canManageCourses={isStaff}
+        isStaff={isStaff}
+        canAddMaterial={
+          isStaff ||
+          Boolean(subjects.find((s) => String(s.id) === String(activeSubjectId))?.is_private)
+        }
       />
     );
   }

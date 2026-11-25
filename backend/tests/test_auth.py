@@ -297,36 +297,50 @@ def test_public_routes_stay_public():
 # ---------------------------------------------------------------- roles
 
 
-def test_students_cannot_create_courses_or_upload_material():
-    headers = token_for("pytest_user", "student")
+def test_students_cannot_create_shared_courses_or_add_to_them():
+    from app.models import Subject
 
-    assert (
-        http.post("/subjects", headers=headers, json={"name": "X"}).status_code
-        == 403
-    )
-    assert (
-        http.post(
-            "/subjects/generate", headers=headers, json={"topic": "X"}
-        ).status_code
-        == 403
-    )
-    assert (
-        http.post(
-            "/knowledge/ingest/subject",
-            headers=headers,
-            json={"subject_id": 1, "text": "x"},
-        ).status_code
-        == 403
-    )
-    assert (
-        http.post(
-            "/knowledge/upload/subject",
-            headers=headers,
-            data={"subject_id": "1"},
-            files={"file": ("a.txt", b"hello")},
-        ).status_code
-        == 403
-    )
+    headers = token_for("pytest_user", "student")
+    db = SessionLocal()
+    shared = Subject(name=f"shared-{uuid.uuid4().hex[:8]}", description="s")
+    db.add(shared)
+    db.commit()
+    shared_id = shared.id
+    db.close()
+
+    try:
+        assert (
+            http.post("/subjects", headers=headers, json={"name": "X"}).status_code
+            == 403
+        )
+        assert (
+            http.post(
+                "/subjects/generate", headers=headers, json={"topic": "X"}
+            ).status_code
+            == 403
+        )
+        assert (
+            http.post(
+                "/knowledge/ingest/subject",
+                headers=headers,
+                json={"subject_id": shared_id, "text": "x", "source": "s"},
+            ).status_code
+            == 403
+        )
+        assert (
+            http.post(
+                "/knowledge/upload/subject",
+                headers=headers,
+                data={"subject_id": str(shared_id)},
+                files={"file": ("a.txt", b"hello")},
+            ).status_code
+            == 403
+        )
+    finally:
+        db = SessionLocal()
+        db.query(Subject).filter_by(id=shared_id).delete()
+        db.commit()
+        db.close()
 
 
 def test_students_can_list_courses():

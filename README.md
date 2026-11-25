@@ -70,8 +70,8 @@ salted hashes. Tokens expire after `ACCESS_TOKEN_MINUTES` (default 12 hours).
 
 | Role | Can do |
 |---|---|
-| `student` | Learn: diagnostic, lessons, quizzes, own progress, list courses. Only their own data. |
-| `instructor` | Everything a student can, plus create courses, upload study material, and view any learner's progress. |
+| `student` | Learn: diagnostic, lessons, quizzes, own progress. Can study any topic by creating a **private course** (see below). Only their own data. |
+| `instructor` | Everything a student can, plus create **shared** courses (visible to everyone), upload material to them, and view any learner's progress. |
 | `admin` | Everything an instructor can, plus manage users (change roles, deactivate, reset passwords). |
 
 Public sign-up always creates a `student`. Roles are checked on the server for
@@ -101,6 +101,20 @@ whether to teach, reteach, practise or move on → quiz → mastery updates → 
 Study material uploaded for a subject (PDF, TXT or Markdown) grounds lessons,
 quizzes and the diagnostic for every concept in it.
 
+## Learning any topic
+
+A student types any topic (`POST /subjects/from-topic`). The backend asks the
+LLM for a concept path with prerequisites, saves it as a course that only that
+student can see, and attaches study material automatically from the Wikipedia
+API (top articles for the topic and each concept, disambiguation and stub pages
+skipped). The student can add their own notes or PDFs to their course. Material
+keeps its article title and URL as the chunk source, so the tutor's evidence
+stays traceable; Wikipedia text is CC BY-SA 4.0. If Wikipedia or the embedding
+model is unreachable the course is still created and the student is asked to
+upload material. A student can keep up to `MAX_COURSES_PER_USER` courses;
+asking for the same topic twice returns the existing course. Private courses
+return 404 to everyone else, including instructors.
+
 ## Configuration
 
 | Where | Variable | Default |
@@ -109,9 +123,11 @@ quizzes and the diagnostic for every concept in it.
 | backend `.env` | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` |
 | backend `.env` | `SECRET_KEY`, `ACCESS_TOKEN_MINUTES`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` | random key, 720, none |
 | backend `.env` | `OLLAMA_BASE_URL`, `LLM_MODEL`, `EMBEDDING_MODEL` | local Ollama, `llama3.2:3b`, `nomic-embed-text` |
+| backend `.env` | `GRADER_MODEL` | empty (grade with `LLM_MODEL`); a 7-8B model grades far more reliably |
 | backend `.env` | `OLLAMA_TIMEOUT_SECONDS`, `OLLAMA_RETRIES`, `OLLAMA_RETRY_BACKOFF_SECONDS` | 120, 1, 0.5 |
 | backend `.env` | `PREREQUISITE_MASTERY_THRESHOLD` | 0.80 |
 | backend `.env` | `MAX_UPLOAD_BYTES` | 10485760 (10 MB) |
+| backend `.env` | `WEB_MATERIAL_ENABLED`, `WEB_MATERIAL_MAX_ARTICLES`, `WEB_MATERIAL_MAX_WORDS`, `MAX_COURSES_PER_USER` | true, 6, 3000, 25 |
 | `frontend/.env.local` | `VITE_API_BASE_URL` | `/api` |
 | `frontend/.env.local` | `VITE_PROXY_TARGET` | `http://127.0.0.1:8000` |
 
@@ -139,3 +155,15 @@ npm test
 ```
 
 Neither suite needs Ollama.
+
+
+## Grading quality
+
+Answers are graded by a local model, which is the weakest link of the tutor.
+A flagged contradiction only counts when a second, simpler check explicitly
+agrees; otherwise the answer gets partial credit and no misconception is
+stored. To measure how well a model agrees with human judgement, edit
+`backend/eval/grader_examples.json` (add your own labelled answers) and run,
+from `backend`, `python -m app.tutor.grader_agreement`. Run it again with a
+different `GRADER_MODEL` to compare models; report the numbers you measured,
+not estimates.

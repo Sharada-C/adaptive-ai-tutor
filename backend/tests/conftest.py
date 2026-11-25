@@ -53,6 +53,15 @@ def token_for(username: str, role: str = "student") -> dict:
 
 
 @pytest.fixture(autouse=True)
+def _default_grader_model(monkeypatch):
+    """Tests must not depend on the developer's GRADER_MODEL setting."""
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "grader_model", "")
+
+
+@pytest.fixture(autouse=True)
 def _reset_login_throttle():
     from app.core import login_throttle
 

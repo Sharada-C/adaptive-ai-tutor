@@ -1,3 +1,5 @@
+import uuid
+
 from app.db.database import SessionLocal
 from app.models import Concept, ConceptMastery, Subject
 from app.models.student import User, StudentProfile
@@ -92,7 +94,7 @@ def test_select_next_concept_respects_prerequisites():
 
         process_scheduling.prerequisites.append(process_management)
 
-        user = User(username="pytest_planner_user")
+        user = User(username=f"pytest_planner_{uuid.uuid4().hex[:8]}")
         db.add(user)
         db.flush()
 
