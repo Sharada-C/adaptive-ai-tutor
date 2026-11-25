@@ -16,6 +16,7 @@ from app.api.auth import router as auth_router
 from app.api.admin import router as admin_router
 from app.api.curriculum import router as curriculum_router
 from app.api.student import router as student_router
+from app.api.learning import router as learning_router
 from app.api.assessment import router as assessment_router
 from app.api.planner import router as planner_router
 from app.api.tutor import router as tutor_router
@@ -106,6 +107,7 @@ api_router.include_router(auth_router)
 api_router.include_router(admin_router)
 api_router.include_router(curriculum_router)
 api_router.include_router(student_router)
+api_router.include_router(learning_router)
 api_router.include_router(assessment_router)
 api_router.include_router(planner_router)
 api_router.include_router(tutor_router)

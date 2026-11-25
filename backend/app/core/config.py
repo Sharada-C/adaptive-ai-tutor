@@ -42,8 +42,9 @@ class Settings(BaseSettings):
     # Study material fetched automatically for student-created courses.
     web_material_enabled: bool = True
     wikipedia_api_url: str = "https://en.wikipedia.org/w/api.php"
-    web_material_max_articles: int = 6
+    web_material_max_articles: int = 15
     web_material_max_words: int = 3000
+    web_material_concept_words: int = 1500
     web_material_timeout_seconds: float = 10.0
 
     # How many private courses one student may create.

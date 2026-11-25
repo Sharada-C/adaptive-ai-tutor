@@ -115,6 +115,21 @@ upload material. A student can keep up to `MAX_COURSES_PER_USER` courses;
 asking for the same topic twice returns the existing course. Private courses
 return 404 to everyone else, including instructors.
 
+Each concept also gets its own Wikipedia article (cited per concept), so a
+lesson or quiz on a concept is grounded in text about that concept rather than
+only in the topic's overview. Evidence text that does not mention the concept is
+not shown as a lesson.
+
+## My learning
+
+The **My learning** page (header button, also offered at the end of a path)
+lists every course the learner created or started, with mastery and concepts
+mastered, and lets them continue one or start a new topic. "What I've learned"
+opens a journal per concept: status (mastered / in progress / not started),
+takeaways from questions they answered well, misconceptions still open and
+their recent answers (`GET /students/{id}/library`,
+`GET /students/{id}/subjects/{subject_id}/journal`).
+
 ## Configuration
 
 | Where | Variable | Default |

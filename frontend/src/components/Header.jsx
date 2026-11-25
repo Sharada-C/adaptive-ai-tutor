@@ -8,6 +8,7 @@ export default function Header({
   onSignOut,
   onShowAdmin,
   onShowProgress,
+  onShowLibrary,
   onRestart,
 }) {
   return (
@@ -22,6 +23,12 @@ export default function Header({
       </div>
 
       <div className="navbar-actions">
+        {onShowLibrary && (
+          <button type="button" className="nav-button" onClick={onShowLibrary}>
+            My learning
+          </button>
+        )}
+
         {onShowProgress && (
           <button
             type="button"

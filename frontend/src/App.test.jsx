@@ -17,6 +17,8 @@ vi.mock("./api", () => {
     getSubjects: vi.fn(),
     getConcepts: vi.fn(),
     getMastery: vi.fn(),
+    getLibrary: vi.fn(),
+    getJournal: vi.fn(),
     getProfile: vi.fn(),
     setLearningLevel: vi.fn(),
     generateCourse: vi.fn(),
@@ -352,6 +354,114 @@ describe("App", () => {
 
     expect(await screen.findByText("A switch connects devices.")).toBeInTheDocument();
     expect(screen.getByText(/shown directly from your study material/i)).toBeInTheDocument();
+  });
+});
+
+describe("my learning", () => {
+  const COURSE = {
+    subject_id: 1,
+    name: "Photosynthesis",
+    is_private: true,
+    total_concepts: 4,
+    mastered_concepts: 1,
+    mastery: 0.35,
+    last_activity: "2026-11-25T10:00:00",
+  };
+
+  const JOURNAL = {
+    subject_id: 1,
+    name: "Photosynthesis",
+    concepts: [
+      {
+        concept_id: 5,
+        name: "Chlorophyll",
+        description: "",
+        status: "mastered",
+        mastery: 0.9,
+        attempts: 2,
+        correct_answers: 2,
+        last_studied: "2026-11-25T10:00:00",
+        takeaways: ["Chlorophyll absorbs light energy."],
+        open_misconceptions: [],
+        history: [],
+      },
+      {
+        concept_id: 6,
+        name: "Calvin cycle",
+        description: "",
+        status: "learning",
+        mastery: 0.4,
+        attempts: 1,
+        correct_answers: 0,
+        last_studied: null,
+        takeaways: [],
+        open_misconceptions: ["Thinks the cycle needs no ATP"],
+        history: [],
+      },
+    ],
+  };
+
+  it("lists the learner's courses and what they have learned", async () => {
+    api.getLibrary.mockResolvedValue([COURSE]);
+    api.getJournal.mockResolvedValue(JOURNAL);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Computer Networks");
+    await user.click(screen.getByRole("button", { name: /my learning/i }));
+
+    expect(await screen.findByText(/Photosynthesis \(my course\)/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 4 concepts mastered/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /what i've learned/i }));
+
+    expect(await screen.findByText("Chlorophyll absorbs light energy.")).toBeInTheDocument();
+    expect(screen.getByText("Thinks the cycle needs no ATP")).toBeInTheDocument();
+    expect(api.getJournal).toHaveBeenCalledWith(3, 1);
+  });
+
+  it("continues the chosen course from the library", async () => {
+    api.getLibrary.mockResolvedValue([COURSE]);
+    api.getNextConcept.mockResolvedValue({ status: "complete", concept: null });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Computer Networks");
+    await user.click(screen.getByRole("button", { name: /my learning/i }));
+    await user.click(await screen.findByRole("button", { name: /^continue$/i }));
+
+    await waitFor(() => expect(api.getNextConcept).toHaveBeenCalledWith(3, 1));
+  });
+
+  it("offers a new topic from the library", async () => {
+    api.getLibrary.mockResolvedValue([]);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Computer Networks");
+    await user.click(screen.getByRole("button", { name: /my learning/i }));
+
+    expect(await screen.findByText(/haven't started any course/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /learn something new/i }));
+
+    expect(await screen.findByLabelText(/type any topic/i)).toBeInTheDocument();
+  });
+
+  it("points to the library and a new topic at the end of a path", async () => {
+    api.getNextConcept.mockResolvedValue({ status: "complete", concept: null });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await chooseSubject(user);
+    await user.click(screen.getByRole("button", { name: /skip diagnostic/i }));
+
+    expect(await screen.findByRole("button", { name: /see what you've learned/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /learn something new/i })).toBeInTheDocument();
   });
 });
 
