@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.api.deps import ensure_student_access, get_current_user
+from app.api.deps import ensure_student_access, ensure_subject_access, get_current_user
 from app.models.student import User
 from sqlalchemy.orm import Session
 
@@ -36,6 +36,8 @@ def get_next_concept(
         student_id,
         allow_staff=True,
     )
+
+    ensure_subject_access(db, current_user, subject_id)
 
     student = db.get(StudentProfile, student_id)
 

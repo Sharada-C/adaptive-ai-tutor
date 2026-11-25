@@ -175,6 +175,11 @@ export const getConcepts = (subjectId) =>
 export const generateCourse = (topic) =>
   request("/subjects/generate", { method: "POST", json: { topic } });
 
+// Any signed-in user: a private course on any topic, with Wikipedia text
+// attached as cited study material.
+export const createCourseFromTopic = (topic) =>
+  request("/subjects/from-topic", { method: "POST", json: { topic } });
+
 // ------------------------------------------------------------
 // Study material
 // ------------------------------------------------------------

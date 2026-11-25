@@ -20,6 +20,7 @@ vi.mock("./api", () => {
     getProfile: vi.fn(),
     setLearningLevel: vi.fn(),
     generateCourse: vi.fn(),
+    createCourseFromTopic: vi.fn(),
     uploadSubjectMaterial: vi.fn(),
     startDiagnostic: vi.fn(),
     submitDiagnosticAnswer: vi.fn(),
@@ -462,15 +463,48 @@ describe("authentication", () => {
 });
 
 describe("roles", () => {
-  it("hides course creation and uploads from students", async () => {
+  it("lets students create their own course but not add to shared ones", async () => {
     signedIn();
 
     const { container } = render(<App />);
 
     await screen.findByText("Computer Networks");
 
-    expect(screen.queryByLabelText(/create a new course/i)).not.toBeInTheDocument();
-    expect(container.querySelector('input[type="file"]')).toBeNull();
+    expect(screen.getByLabelText(/type any topic/i)).toBeInTheDocument();
+    // Shared course: the upload control is present but disabled.
+    expect(container.querySelector('input[type="file"]')).toBeDisabled();
+  });
+
+  it("creates a private course from any topic as a student", async () => {
+    signedIn();
+    api.createCourseFromTopic.mockResolvedValue({
+      subject_id: 9,
+      subject: "Photosynthesis",
+      concepts_created: 6,
+      created: true,
+      needs_material: false,
+      message: "Your course is ready with 3 Wikipedia article(s) as study material.",
+    });
+    api.getSubjects
+      .mockResolvedValueOnce([{ id: 1, name: "Computer Networks" }])
+      .mockResolvedValue([
+        { id: 1, name: "Computer Networks" },
+        { id: 9, name: "Photosynthesis", is_private: true },
+      ]);
+
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await screen.findByText("Computer Networks");
+    await user.type(screen.getByLabelText(/type any topic/i), "Photosynthesis");
+    await user.click(screen.getByRole("button", { name: /create my course/i }));
+
+    expect(api.createCourseFromTopic).toHaveBeenCalledWith("Photosynthesis");
+    expect(api.generateCourse).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/3 wikipedia article/i);
+    expect(screen.getByLabelText(/what do you want to learn/i)).toHaveValue("9");
+    // Own course: uploads are allowed.
+    expect(container.querySelector('input[type="file"]')).toBeEnabled();
   });
 
   it("does not show user management to students", async () => {

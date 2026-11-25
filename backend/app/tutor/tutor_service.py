@@ -9,11 +9,11 @@ OLLAMA_URL = f"{settings.ollama_base_url.rstrip('/')}/api/generate"
 MODEL_NAME = settings.llm_model
 
 
-def generate_response(prompt: str) -> str:
+def generate_response(prompt: str, model: str | None = None) -> str:
     data = post_json(
         OLLAMA_URL,
         {
-            "model": MODEL_NAME,
+            "model": model or MODEL_NAME,
             "prompt": prompt,
             "stream": False,
             "options": {
@@ -188,10 +188,84 @@ def sanitize_retrieved_knowledge(retrieved_knowledge: str) -> str:
         )
 
     return sanitized
-def build_evidence_lesson(retrieved_knowledge: str) -> str:
+MAX_EVIDENCE_SENTENCES = 6
+MAX_EVIDENCE_WORDS = 170
+MAX_SENTENCE_WORDS = 45
+
+_FOCUS_STOPWORDS = frozenset(
+    "a an the of to in on for and or but is are was were be been it its this "
+    "that these those as at by with from into than then which who what when "
+    "where how why not no can may will has have had their there they them".split()
+)
+
+
+def _focus_stems(text: str) -> set[str]:
+    return {
+        word[:5]
+        for word in re.findall(r"[a-z0-9]+", text.lower())
+        if word not in _FOCUS_STOPWORDS and len(word) > 2
+    }
+
+
+def _select_relevant(sentences: list[str], focus: str) -> list[str]:
+    """Keep the few sentences most related to ``focus``, in original order.
+
+    Study material can be whole articles; showing every retrieved chunk
+    buries the point. With no focus the first sentences are kept.
+    """
+
+    if len(sentences) <= MAX_EVIDENCE_SENTENCES and (
+        sum(len(sentence.split()) for sentence in sentences) <= MAX_EVIDENCE_WORDS
+    ):
+        return sentences
+
+    focus_stems = _focus_stems(focus)
+
+    # Very long sentences are usually list dumps; prefer concise ones
+    # unless there is nothing else.
+    concise = [
+        i
+        for i, sentence in enumerate(sentences)
+        if len(sentence.split()) <= MAX_SENTENCE_WORDS
+    ]
+    candidates = concise if len(concise) >= 3 else list(range(len(sentences)))
+
+    scored = sorted(
+        candidates,
+        key=lambda i: (
+            -len(_focus_stems(sentences[i]) & focus_stems),
+            i,
+        ),
+    )
+
+    chosen: list[int] = []
+    words = 0
+
+    for index in scored:
+        length = len(sentences[index].split())
+
+        if chosen and words + length > MAX_EVIDENCE_WORDS:
+            continue
+
+        chosen.append(index)
+        words += length
+
+        if len(chosen) >= MAX_EVIDENCE_SENTENCES:
+            break
+
+    return [sentences[i] for i in sorted(chosen)]
+
+
+def build_evidence_lesson(
+    retrieved_knowledge: str,
+    focus: str = "",
+) -> str:
     """
     Build a learner-facing factual lesson directly from retrieved
     knowledge without allowing the LLM to introduce new facts.
+
+    ``focus`` (concept name/description, question...) picks which
+    sentences are shown when the evidence is long.
     """
 
     if not retrieved_knowledge.strip():
@@ -207,7 +281,7 @@ def build_evidence_lesson(retrieved_knowledge: str) -> str:
         if chunk.strip()
     ]
 
-    statements = []
+    all_sentences: list[str] = []
     seen_sentences = set()
 
     for chunk in chunks:
@@ -226,7 +300,10 @@ def build_evidence_lesson(retrieved_knowledge: str) -> str:
             cleaned_chunk,
         )
 
-        unique_sentences = []
+        # Chunks are cut at fixed word counts, so one can begin in the
+        # middle of a sentence. That broken beginning is not shown.
+        if len(sentences) > 1 and sentences[0][:1].islower():
+            sentences = sentences[1:]
 
         for sentence in sentences:
             sentence = sentence.strip()
@@ -240,6 +317,7 @@ def build_evidence_lesson(retrieved_knowledge: str) -> str:
 
             if not sentence:
                 continue
+
             normalized = re.sub(
                 r"\s+",
                 " ",
@@ -250,12 +328,11 @@ def build_evidence_lesson(retrieved_knowledge: str) -> str:
                 continue
 
             seen_sentences.add(normalized)
-            unique_sentences.append(sentence)
+            all_sentences.append(sentence)
 
-        if unique_sentences:
-            statements.append(" ".join(unique_sentences))
+    selected = _select_relevant(all_sentences, focus)
 
-    return "\n\n".join(statements)
+    return " ".join(selected)
 
 
 @dataclass
@@ -269,6 +346,7 @@ class GroundedResult:
 def grounded_response(
     prompt: str,
     retrieved_knowledge: str,
+    focus: str = "",
 ) -> GroundedResult:
     """
     Generate a tutor response with the LLM and accept it only when every
@@ -288,7 +366,8 @@ def grounded_response(
     )
 
     evidence_lesson = build_evidence_lesson(
-        sanitized_knowledge
+        sanitized_knowledge,
+        focus=focus,
     )
 
     llm_response = generate_response(prompt)

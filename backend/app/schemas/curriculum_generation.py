@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CurriculumGenerateRequest(BaseModel):
@@ -41,3 +41,25 @@ class SavedCurriculumResponse(BaseModel):
     subject: str
     description: str
     concepts_created: int
+
+
+class TopicCourseRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    topic: str = Field(min_length=3, max_length=100)
+
+
+class MaterialSummary(BaseModel):
+    articles: list[str]
+    chunks: int
+
+
+class TopicCourseResponse(BaseModel):
+    subject_id: int
+    subject: str
+    description: str
+    concepts_created: int
+    created: bool
+    material: MaterialSummary
+    needs_material: bool
+    message: str

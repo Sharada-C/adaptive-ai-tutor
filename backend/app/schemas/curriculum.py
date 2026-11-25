@@ -10,6 +10,7 @@ class SubjectResponse(BaseModel):
     id: int
     name: str
     description: str | None
+    is_private: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

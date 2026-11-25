@@ -1,5 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.api.deps import ensure_student_access, get_current_user
+from app.api.deps import (
+    ensure_concept_access,
+    ensure_student_access,
+    get_current_user,
+)
 from app.models.student import User
 from sqlalchemy.orm import Session
 
@@ -41,6 +45,8 @@ def get_next_action(
         student_id,
         allow_staff=True,
     )
+
+    ensure_concept_access(db, current_user, concept_id)
 
     # ---------------------------------------------------------
     # 1. Validate student

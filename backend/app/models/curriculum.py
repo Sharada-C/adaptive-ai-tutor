@@ -1,4 +1,13 @@
-from sqlalchemy import ForeignKey, String, Table, Column, Text
+from sqlalchemy import (
+    Column,
+    ForeignKey,
+    Index,
+    String,
+    Table,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -27,8 +36,14 @@ class Subject(Base):
 
     name: Mapped[str] = mapped_column(
         String(100),
-        unique=True,
         nullable=False,
+    )
+
+    # NULL = shared course made by staff; set = private to that student.
+    owner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
 
     description: Mapped[str | None] = mapped_column(
@@ -40,6 +55,23 @@ class Subject(Base):
         back_populates="subject",
         cascade="all, delete-orphan",
     )
+
+    __table_args__ = (
+        # Shared course names are globally unique; a private name only has
+        # to be unique within its owner, so two students can both study
+        # "Binary Search".
+        Index(
+            "uq_subjects_shared_name",
+            "name",
+            unique=True,
+            postgresql_where=text("owner_id IS NULL"),
+        ),
+        UniqueConstraint("owner_id", "name", name="uq_subjects_owner_name"),
+    )
+
+    @property
+    def is_private(self) -> bool:
+        return self.owner_id is not None
 
 
 class Concept(Base):

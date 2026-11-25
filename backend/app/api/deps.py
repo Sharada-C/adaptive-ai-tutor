@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
 from app.db.database import SessionLocal
+from app.models.curriculum import Concept, Subject
 from app.models.student import StudentProfile, User
 
 
@@ -120,3 +121,42 @@ def ensure_student_access(
         )
 
     return profile
+
+
+def subject_visible_to(subject: Subject, user: User) -> bool:
+    """Shared courses (no owner) are visible to everyone; a private course
+    only to the student who created it."""
+
+    return subject.owner_id is None or subject.owner_id == user.id
+
+
+def ensure_subject_access(db: Session, user: User, subject_id: int) -> Subject:
+    subject = db.get(Subject, subject_id)
+
+    # 404 for both "missing" and "somebody else's", so ids do not leak.
+    if subject is None or not subject_visible_to(subject, user):
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    return subject
+
+
+def ensure_concept_access(db: Session, user: User, concept_id: int) -> Concept:
+    concept = db.get(Concept, concept_id)
+
+    if concept is None or not subject_visible_to(concept.subject, user):
+        raise HTTPException(status_code=404, detail="Concept not found")
+
+    return concept
+
+
+def ensure_can_add_material(db: Session, user: User, subject: Subject) -> None:
+    """Staff curate shared courses; students curate their own private ones."""
+
+    if subject.owner_id is None:
+        if user.role not in STAFF_ROLES:
+            raise HTTPException(
+                status_code=403,
+                detail="Only instructors can add material to shared courses.",
+            )
+    elif subject.owner_id != user.id:
+        raise HTTPException(status_code=404, detail="Subject not found")

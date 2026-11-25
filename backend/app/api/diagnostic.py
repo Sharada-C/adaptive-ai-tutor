@@ -1,7 +1,11 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
-from app.api.deps import ensure_student_access, get_current_user
+from app.api.deps import (
+    ensure_student_access,
+    ensure_subject_access,
+    get_current_user,
+)
 from app.services.mastery_service import lock_mastery, refresh_mastery
 from app.models.student import User
 from sqlalchemy.orm import Session
@@ -57,6 +61,8 @@ def start_diagnostic(
         request.student_id,
         allow_staff=False,
     )
+
+    ensure_subject_access(db, current_user, request.subject_id)
 
     student = db.get(
         StudentProfile,

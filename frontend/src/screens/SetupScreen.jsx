@@ -25,10 +25,12 @@ export default function SetupScreen({
   starting,
   onSkip,
   loadingLesson,
-  canManageCourses = false,
+  isStaff = false,
+  canAddMaterial = false,
 }) {
   const subjectUnavailable =
     !ready || loadingSubjects || !!subjectError || !subjectId;
+  const uploadBlocked = subjectUnavailable || !canAddMaterial;
 
   return (
     <main className="main-content">
@@ -72,58 +74,70 @@ export default function SetupScreen({
             >
               <option value="">
                 {subjects.length === 0
-                  ? "No courses yet — create one below"
+                  ? "No courses yet — type a topic below"
                   : "Select a subject"}
               </option>
 
               {subjects.map((subject) => (
                 <option key={subject.id} value={subject.id}>
                   {subject.name}
+                  {subject.is_private ? " (my course)" : ""}
                 </option>
               ))}
             </select>
           )}
         </div>
 
-        {canManageCourses && (
-          <>
-            <div className="form-section">
-              <label htmlFor="course-topic">Or create a new course</label>
+        <div className="form-section">
+          <label htmlFor="course-topic">
+            {isStaff ? "Or create a new course" : "Or learn anything — type any topic"}
+          </label>
 
-              <form
-                className="inline-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  onGenerateCourse();
-                }}
-              >
-                <input
-                  id="course-topic"
-                  type="text"
-                  maxLength={100}
-                  placeholder="e.g. Operating Systems"
-                  value={courseTopic}
-                  onChange={(event) => onCourseTopicChange(event.target.value)}
-                  disabled={generating || !ready}
-                />
+          <form
+            className="inline-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onGenerateCourse();
+            }}
+          >
+            <input
+              id="course-topic"
+              type="text"
+              minLength={3}
+              maxLength={100}
+              placeholder="e.g. Operating Systems, Photosynthesis, Jazz history"
+              value={courseTopic}
+              onChange={(event) => onCourseTopicChange(event.target.value)}
+              disabled={generating || !ready}
+            />
 
-                <button
-                  type="submit"
-                  className="secondary-button"
-                  disabled={!courseTopic.trim() || generating || !ready}
-                >
-                  {generating ? "Generating..." : "Generate course"}
-                </button>
-              </form>
+            <button
+              type="submit"
+              className="secondary-button"
+              disabled={courseTopic.trim().length < 3 || generating || !ready}
+            >
+              {generating
+                ? "Generating..."
+                : isStaff
+                  ? "Generate course"
+                  : "Create my course"}
+            </button>
+          </form>
 
-              {generating && (
-                <p className="hint">
-                  Building your course with the AI model. This can take a minute.
-                </p>
-              )}
-            </div>
-          </>
-        )}
+          {generating && (
+            <p className="hint">
+              Building your course and gathering study material. This can take a
+              minute or two.
+            </p>
+          )}
+
+          {!isStaff && !generating && (
+            <p className="hint">
+              Courses you create are private to you. The tutor teaches from
+              Wikipedia articles (cited) plus anything you upload.
+            </p>
+          )}
+        </div>
 
         <div className="form-section">
           <label>What's your current level?</label>
@@ -148,8 +162,7 @@ export default function SetupScreen({
           </div>
         </div>
 
-        {canManageCourses ? (
-          <>
+        <>
             <div className="divider">
               <span>STUDY MATERIAL</span>
             </div>
@@ -157,11 +170,11 @@ export default function SetupScreen({
             <div className="form-section">
               <label>Learn from your own material</label>
 
-              <label className={`upload-area ${subjectUnavailable ? "disabled" : ""}`}>
+              <label className={`upload-area ${uploadBlocked ? "disabled" : ""}`}>
                 <input
                   type="file"
                   accept=".pdf,.txt,.md,.markdown"
-                  disabled={uploading || subjectUnavailable}
+                  disabled={uploading || uploadBlocked}
                   onChange={(event) => {
                     const file = event.target.files[0] || null;
 
@@ -185,7 +198,9 @@ export default function SetupScreen({
                 <span className="upload-description">
                   {subjectUnavailable
                     ? "Select a subject first"
-                    : "PDF, TXT or Markdown • Added to the selected subject"}
+                    : !canAddMaterial
+                      ? "This is a shared course. Create your own course to add notes."
+                      : "PDF, TXT or Markdown • Added to the selected subject"}
                 </span>
               </label>
 
@@ -196,17 +211,12 @@ export default function SetupScreen({
               )}
 
               <p className="hint">
-                The tutor only teaches from study material. A course you create
-                needs some before the diagnostic and lessons can start.
+                The tutor only teaches from study material. A course needs some
+                (found automatically or uploaded by you) before the diagnostic
+                and lessons can start.
               </p>
             </div>
-          </>
-        ) : (
-          <p className="hint">
-            Courses and study material are added by your instructor. Pick a
-            course above to begin.
-          </p>
-        )}
+        </>
 
         <button
           type="button"
