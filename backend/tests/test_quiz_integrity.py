@@ -144,3 +144,76 @@ def test_a_question_can_only_be_answered_once(monkeypatch, test_student):
 
     assert client.post("/tutor/evaluate", headers=headers, json=payload).status_code == 200
     assert client.post("/tutor/evaluate", headers=headers, json=payload).status_code == 409
+
+
+class _Chunk:
+    content = (
+        "Photosynthesis converts light energy into chemical energy stored "
+        "in glucose. It takes place in the chloroplasts of plant cells."
+    )
+
+
+def _force_ungrounded_drafts(monkeypatch, retrieved):
+    calls = []
+
+    def always_rejected(**kwargs):
+        calls.append(1)
+        raise ValueError("Quiz expected answer is not sufficiently grounded.")
+
+    monkeypatch.setattr(quiz, "generate_quiz", always_rejected)
+    monkeypatch.setattr(
+        quiz, "retrieve_with_subject_fallback", lambda **kwargs: retrieved
+    )
+    return calls
+
+
+def test_ungrounded_drafts_fall_back_to_an_evidence_question(
+    monkeypatch, test_student
+):
+    calls = _force_ungrounded_drafts(monkeypatch, [{"chunk": _Chunk()}])
+
+    response = client.post(
+        "/tutor/quiz",
+        headers=token_for("pytest_user"),
+        json={"student_id": test_student, "concept_id": 1},
+    )
+
+    assert response.status_code == 200
+    assert len(calls) == quiz.QUIZ_GENERATION_ATTEMPTS
+    assert response.json()["question"].startswith("In your own words")
+
+
+def test_one_rejected_draft_is_retried(monkeypatch, test_student):
+    attempts = []
+
+    def flaky(**kwargs):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise ValueError("not grounded")
+        return {"question": "Q2?", "expected_answer": "A", "difficulty": "easy"}
+
+    monkeypatch.setattr(quiz, "generate_quiz", flaky)
+    monkeypatch.setattr(
+        quiz, "retrieve_with_subject_fallback", lambda **kwargs: []
+    )
+
+    response = client.post(
+        "/tutor/quiz",
+        headers=token_for("pytest_user"),
+        json={"student_id": test_student, "concept_id": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["question"] == "Q2?"
+
+
+def test_no_material_at_all_is_still_an_error(monkeypatch, test_student):
+    _force_ungrounded_drafts(monkeypatch, [])
+
+    response = client.post(
+        "/tutor/quiz",
+        headers=token_for("pytest_user"),
+        json={"student_id": test_student, "concept_id": 1},
+    )
+
+    assert response.status_code == 422

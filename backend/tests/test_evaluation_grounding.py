@@ -438,3 +438,36 @@ def test_without_grader_model_the_default_model_is_used(monkeypatch):
     _grade_cell()
 
     assert calls
+
+
+LATEX_REPLY = (
+    '{"claims": [{"claim": "It converts CO\\(_2\\) into sugar", '
+    '"evidence": "It converts CO\\(_2\\) into sugar", '
+    '"assessment": "supported"}]}'
+)
+
+
+def test_json_with_latex_backslashes_still_parses():
+    from app.tutor.evaluation_service import _extract_json_object
+
+    parsed = _extract_json_object(LATEX_REPLY)
+
+    assert parsed["claims"][0]["assessment"] == "supported"
+
+
+def test_valid_json_escapes_are_left_alone():
+    from app.tutor.evaluation_service import _extract_json_object
+
+    parsed = _extract_json_object(r'{"a": "line\nbreak \"q\" \\ A"}')
+
+    assert parsed["a"] == 'line\nbreak "q" \\ A'
+
+
+def test_unparseable_model_reply_does_not_crash_grading(monkeypatch):
+    monkeypatch.setattr(
+        evaluation_service, "generate_response", lambda prompt: "no json here"
+    )
+
+    result = _evaluate()
+
+    assert result["result"] in {"correct", "partially_correct", "incorrect"}

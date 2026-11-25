@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import (
     ensure_concept_access,
@@ -12,15 +14,43 @@ from app.models.curriculum import Concept
 from app.models.student import QuizQuestionRecord
 from app.schemas.quiz import QuizQuestion, QuizRequest
 from app.tutor.context_builder import build_tutor_context
-from app.tutor.quiz_service import generate_quiz
+from app.tutor.quiz_service import build_evidence_quiz, generate_quiz
 from app.services.prerequisite_service import locked_concept_detail
 from app.rag.retriever import retrieve_with_subject_fallback
 
+
+logger = logging.getLogger(__name__)
+
+QUIZ_GENERATION_ATTEMPTS = 3
 
 router = APIRouter(
     prefix="/tutor",
     tags=["Quiz"],
 )
+
+
+def _generate_with_fallback(**kwargs) -> dict:
+    """The model is not deterministic and the grounding check is strict.
+    Try a few drafts; if none is grounded, ask a question built directly
+    from the retrieved material instead of failing the student."""
+
+    for attempt in range(QUIZ_GENERATION_ATTEMPTS):
+        try:
+            return generate_quiz(**kwargs)
+        except ValueError as error:
+            logger.info(
+                "quiz attempt %d/%d rejected: %s",
+                attempt + 1,
+                QUIZ_GENERATION_ATTEMPTS,
+                error,
+            )
+
+    return build_evidence_quiz(
+        concept=kwargs["concept"],
+        concept_description=kwargs["concept_description"],
+        mastery_score=kwargs["mastery_score"],
+        knowledge_text=kwargs["knowledge_text"],
+    )
 
 
 def get_db():
@@ -98,7 +128,7 @@ def create_quiz(
     # Generate grounded adaptive quiz
     # ---------------------------------------------------------
     try:
-        generated = generate_quiz(
+        generated = _generate_with_fallback(
             concept=context["concept"],
             concept_description=context["concept_description"],
             student_level=context["student_level"],

@@ -111,3 +111,26 @@ def test_misconceptions_are_included_in_the_prompt(monkeypatch):
     )
 
     assert "- Thinks the scheduler is a process" in seen["prompt"]
+
+
+def test_plural_predicate_form_is_not_treated_as_new_fact():
+    from app.tutor.tutor_service import validate_grounding
+
+    evidence = "Plants use light to make sugar in the chloroplast."
+
+    assert validate_grounding("Plants uses light to make sugar.", evidence)
+
+
+def test_evidence_quiz_is_built_from_the_material():
+    import pytest as _pytest
+    from app.tutor.quiz_service import build_evidence_quiz
+
+    quiz = build_evidence_quiz(
+        "Photosynthesis", None, 0.2, "Plants make sugar from light."
+    )
+
+    assert quiz["difficulty"] == "easy"
+    assert "sugar" in quiz["expected_answer"]
+
+    with _pytest.raises(ValueError):
+        build_evidence_quiz("X", None, 0.2, "No retrieved knowledge available.")
