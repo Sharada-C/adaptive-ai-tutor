@@ -1,0 +1,307 @@
+{
+  "total": 33,
+  "agreement": 0.5757575757575758,
+  "false_credit": 1,
+  "should_fail": 14,
+  "false_reject": 1,
+  "should_pass": 9,
+  "rows": [
+    {
+      "question": "What happens in the light-dependent reactions of photosynthesis, and where do they occur?",
+      "expected_answer": "The light-dependent reactions occur in the thylakoid membranes of the chloroplast, where light energy is used to split water, releasing oxygen and producing ATP and NADPH.",
+      "student_answer": "Light reactions take place in the chloroplast and water is split to give oxygen; the energy goes into ATP and NADPH, which the Calvin cycle uses later.",
+      "label": "partial",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer covers the key points of the expected answer."
+    },
+    {
+      "question": "What happens in the light-dependent reactions of photosynthesis, and where do they occur?",
+      "expected_answer": "The light-dependent reactions occur in the thylakoid membranes of the chloroplast, where light energy is used to split water, releasing oxygen and producing ATP and NADPH.",
+      "student_answer": "In the thylakoid membrane, sunlight is captured and ATP is made.",
+      "label": "partial",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What happens in the light-dependent reactions of photosynthesis, and where do they occur?",
+      "expected_answer": "The light-dependent reactions occur in the thylakoid membranes of the chloroplast, where light energy is used to split water, releasing oxygen and producing ATP and NADPH.",
+      "student_answer": "They happen in the thylakoids and use sunlight to make ATP and NADPH, with oxygen released when water is split.",
+      "label": "correct",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer covers the key points of the expected answer."
+    },
+    {
+      "question": "What happens in the light-dependent reactions of photosynthesis, and where do they occur?",
+      "expected_answer": "The light-dependent reactions occur in the thylakoid membranes of the chloroplast, where light energy is used to split water, releasing oxygen and producing ATP and NADPH.",
+      "student_answer": "They take place in the stroma where carbon dioxide is turned into glucose.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "How do guard cells control the opening of a stoma?",
+      "expected_answer": "When guard cells take up water and become turgid they bend apart and open the stoma; when they lose water and become flaccid the stoma closes.",
+      "student_answer": "Guard cells open the stomata when it is dark so the plant can save water.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "How do guard cells control the opening of a stoma?",
+      "expected_answer": "When guard cells take up water and become turgid they bend apart and open the stoma; when they lose water and become flaccid the stoma closes.",
+      "student_answer": "Guard cells swell and open the stoma.",
+      "label": "partial",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "How do guard cells control the opening of a stoma?",
+      "expected_answer": "When guard cells take up water and become turgid they bend apart and open the stoma; when they lose water and become flaccid the stoma closes.",
+      "student_answer": "Guard cells shrink to open the stomata and swell to close them.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.3,
+      "feedback": "You wrote \"Guard cells shrink to open the stomata and swell to close them.\", which conflicts with the expected answer: When guard cells take up water and become turgid they bend apart and open the stoma; when they lose water and become flaccid the stoma closes."
+    },
+    {
+      "question": "How do guard cells control the opening of a stoma?",
+      "expected_answer": "When guard cells take up water and become turgid they bend apart and open the stoma; when they lose water and become flaccid the stoma closes.",
+      "student_answer": "When the guard cells fill with water they swell and curve so the pore opens, and when they lose water they go limp and it closes.",
+      "label": "correct",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the main difference between a router and a switch?",
+      "expected_answer": "A switch forwards frames within a local network using MAC addresses, while a router forwards packets between different networks using IP addresses.",
+      "student_answer": "A router connects different networks. A switch connects devices.",
+      "label": "partial",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the main difference between a router and a switch?",
+      "expected_answer": "A switch forwards frames within a local network using MAC addresses, while a router forwards packets between different networks using IP addresses.",
+      "student_answer": "Both do the same thing, they send data to computers.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the main difference between a router and a switch?",
+      "expected_answer": "A switch forwards frames within a local network using MAC addresses, while a router forwards packets between different networks using IP addresses.",
+      "student_answer": "A switch uses MAC addresses and a router uses IP addresses, and both of them work at the network layer.",
+      "label": "partial",
+      "predicted": "partial",
+      "score": 0.5,
+      "feedback": "The answer covers some key points of the expected answer but not all of them."
+    },
+    {
+      "question": "What is the main difference between a router and a switch?",
+      "expected_answer": "A switch forwards frames within a local network using MAC addresses, while a router forwards packets between different networks using IP addresses.",
+      "student_answer": "A switch connects devices in the same LAN and uses MAC addresses; a router connects different networks and uses IP addresses to route packets.",
+      "label": "correct",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the main difference between a router and a switch?",
+      "expected_answer": "A switch forwards frames within a local network using MAC addresses, while a router forwards packets between different networks using IP addresses.",
+      "student_answer": "A switch works at the network layer using IP addresses and a router works at the data link layer using MAC addresses.",
+      "label": "incorrect",
+      "predicted": "partial",
+      "score": 0.5,
+      "feedback": "The answer covers some key points of the expected answer but not all of them."
+    },
+    {
+      "question": "How does TCP differ from UDP?",
+      "expected_answer": "TCP is connection-oriented and reliable, using handshakes, acknowledgements and retransmission to deliver data in order, whereas UDP is connectionless and faster but does not guarantee delivery or ordering.",
+      "student_answer": "UDP is more reliable than TCP because it sends data directly without delay.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.3,
+      "feedback": "You wrote \"UDP is more reliable than TCP because it sends data directly without delay.\", which conflicts with the expected answer: TCP is connection-oriented and reliable, using handshakes, acknowledgements and retransmission to deliver data in order, whereas UDP is connectionless and faster but does not guarantee delivery or ordering."
+    },
+    {
+      "question": "How does TCP differ from UDP?",
+      "expected_answer": "TCP is connection-oriented and reliable, using handshakes, acknowledgements and retransmission to deliver data in order, whereas UDP is connectionless and faster but does not guarantee delivery or ordering.",
+      "student_answer": "TCP is reliable and UDP is not.",
+      "label": "partial",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "How does TCP differ from UDP?",
+      "expected_answer": "TCP is connection-oriented and reliable, using handshakes, acknowledgements and retransmission to deliver data in order, whereas UDP is connectionless and faster but does not guarantee delivery or ordering.",
+      "student_answer": "TCP uses a three-way handshake to establish a connection. After that, acknowledgements and retransmissions make sure data is delivered in order. UDP skips all that, so it is faster, and video calls prefer it.",
+      "label": "correct",
+      "predicted": "incorrect",
+      "score": 0.3,
+      "feedback": "You wrote \"UDP skips all that, so it is faster, and video calls prefer it.\", which conflicts with the expected answer: TCP is connection-oriented and reliable, using handshakes, acknowledgements and retransmission to deliver data in order, whereas UDP is connectionless and faster but does not guarantee delivery or ordering."
+    },
+    {
+      "question": "How does TCP differ from UDP?",
+      "expected_answer": "TCP is connection-oriented and reliable, using handshakes, acknowledgements and retransmission to deliver data in order, whereas UDP is connectionless and faster but does not guarantee delivery or ordering.",
+      "student_answer": "TCP sets up a connection and makes sure every packet arrives in order, UDP just sends packets without checking so it is faster but can lose data.",
+      "label": "correct",
+      "predicted": "partial",
+      "score": 0.5,
+      "feedback": "The answer covers some key points of the expected answer but not all of them."
+    },
+    {
+      "question": "What does atomicity mean in a database transaction?",
+      "expected_answer": "Atomicity means a transaction is all-or-nothing: either all of its operations are applied, or none are, and a failure rolls back any partial changes.",
+      "student_answer": "Atomicity means the transaction is saved permanently after it commits.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.3,
+      "feedback": "You wrote \"the transaction is saved permanently after it commits\", which conflicts with the expected answer: Atomicity means a transaction is all-or-nothing: either all of its operations are applied, or none are, and a failure rolls back any partial changes."
+    },
+    {
+      "question": "What does atomicity mean in a database transaction?",
+      "expected_answer": "Atomicity means a transaction is all-or-nothing: either all of its operations are applied, or none are, and a failure rolls back any partial changes.",
+      "student_answer": "It means a transaction cannot be split in parts.",
+      "label": "partial",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What does atomicity mean in a database transaction?",
+      "expected_answer": "Atomicity means a transaction is all-or-nothing: either all of its operations are applied, or none are, and a failure rolls back any partial changes.",
+      "student_answer": "Either the whole transaction completes or nothing happens; if it fails midway, everything is rolled back.",
+      "label": "correct",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What does atomicity mean in a database transaction?",
+      "expected_answer": "Atomicity means a transaction is all-or-nothing: either all of its operations are applied, or none are, and a failure rolls back any partial changes.",
+      "student_answer": "Atomicity ensures that the database stays consistent after a transaction.",
+      "label": "incorrect",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the difference between a process and a thread?",
+      "expected_answer": "A process is an independent program in execution with its own memory space, while threads are lightweight units of execution within a process that share the same memory and resources.",
+      "student_answer": "A process is a program that is running, and a thread is the same thing but it is the name used in Java.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the difference between a process and a thread?",
+      "expected_answer": "A process is an independent program in execution with its own memory space, while threads are lightweight units of execution within a process that share the same memory and resources.",
+      "student_answer": "A thread is a smaller part of a process.",
+      "label": "partial",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the difference between a process and a thread?",
+      "expected_answer": "A process is an independent program in execution with its own memory space, while threads are lightweight units of execution within a process that share the same memory and resources.",
+      "student_answer": "Threads each have their own separate memory space, but processes share memory with each other.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.3,
+      "feedback": "You wrote \"Threads each have their own separate memory space, but processes share memory with each other.\", which conflicts with the expected answer: A process is an independent program in execution with its own memory space, while threads are lightweight units of execution within a process that share the same memory and resources."
+    },
+    {
+      "question": "What is the difference between a process and a thread?",
+      "expected_answer": "A process is an independent program in execution with its own memory space, while threads are lightweight units of execution within a process that share the same memory and resources.",
+      "student_answer": "A process has its own memory, whereas threads inside a process share the process's memory, so threads are lighter to create and switch between.",
+      "label": "correct",
+      "predicted": "partial",
+      "score": 0.5,
+      "feedback": "The answer covers some key points of the expected answer but not all of them."
+    },
+    {
+      "question": "What is the role of the Calvin cycle in photosynthesis?",
+      "expected_answer": "The Calvin cycle uses ATP and NADPH from the light reactions to fix carbon dioxide into sugars such as G3P, which can be used to make glucose; it takes place in the stroma.",
+      "student_answer": "The Calvin cycle makes oxygen by splitting water using light.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.3,
+      "feedback": "You wrote \"The Calvin cycle makes oxygen by splitting water using light.\", which conflicts with the expected answer: The Calvin cycle uses ATP and NADPH from the light reactions to fix carbon dioxide into sugars such as G3P, which can be used to make glucose; it takes place in the stroma."
+    },
+    {
+      "question": "What is the role of the Calvin cycle in photosynthesis?",
+      "expected_answer": "The Calvin cycle uses ATP and NADPH from the light reactions to fix carbon dioxide into sugars such as G3P, which can be used to make glucose; it takes place in the stroma.",
+      "student_answer": "I don't know.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the role of the Calvin cycle in photosynthesis?",
+      "expected_answer": "The Calvin cycle uses ATP and NADPH from the light reactions to fix carbon dioxide into sugars such as G3P, which can be used to make glucose; it takes place in the stroma.",
+      "student_answer": "It makes sugar from carbon dioxide.",
+      "label": "partial",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the role of the Calvin cycle in photosynthesis?",
+      "expected_answer": "The Calvin cycle uses ATP and NADPH from the light reactions to fix carbon dioxide into sugars such as G3P, which can be used to make glucose; it takes place in the stroma.",
+      "student_answer": "The Calvin cycle takes carbon dioxide and, using the ATP and NADPH made in the light reactions, builds sugars like G3P in the stroma.",
+      "label": "correct",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer covers the key points of the expected answer."
+    },
+    {
+      "question": "What is the role of DNS?",
+      "expected_answer": "DNS translates human-readable domain names into IP addresses so that clients can locate servers.",
+      "student_answer": "DNS stores all the websites' content.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the role of DNS?",
+      "expected_answer": "DNS translates human-readable domain names into IP addresses so that clients can locate servers.",
+      "student_answer": "It converts a website name like google.com into the IP address so the browser knows which server to contact.",
+      "label": "correct",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the role of DNS?",
+      "expected_answer": "DNS translates human-readable domain names into IP addresses so that clients can locate servers.",
+      "student_answer": "DNS is used to find websites.",
+      "label": "partial",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the role of DNS?",
+      "expected_answer": "DNS translates human-readable domain names into IP addresses so that clients can locate servers.",
+      "student_answer": "DNS is the system that assigns IP addresses to devices when they join a network.",
+      "label": "incorrect",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    }
+  ]
+}
