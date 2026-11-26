@@ -147,6 +147,7 @@ their recent answers (`GET /students/{id}/library`,
 | backend `.env` | `SECRET_KEY`, `ACCESS_TOKEN_MINUTES`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` | random key, 720, none |
 | backend `.env` | `OLLAMA_BASE_URL`, `LLM_MODEL`, `EMBEDDING_MODEL` | local Ollama, `llama3.2:3b`, `nomic-embed-text` |
 | backend `.env` | `GRADER_MODEL` | empty (grade with `LLM_MODEL`); a 7-8B model grades far more reliably |
+| backend `.env` | `COVERAGE_CHECK` | `true`: an answer with no contradictions is also checked for covering the reference's essential ideas (else partial credit); one extra model call |
 | backend `.env` | `OLLAMA_TIMEOUT_SECONDS`, `OLLAMA_RETRIES`, `OLLAMA_RETRY_BACKOFF_SECONDS` | 120, 1, 0.5 |
 | backend `.env` | `PREREQUISITE_MASTERY_THRESHOLD` | 0.80 |
 | backend `.env` | `MAX_UPLOAD_BYTES` | 10485760 (10 MB) |

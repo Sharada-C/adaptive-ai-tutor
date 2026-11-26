@@ -19,13 +19,19 @@ STUDENT = "It describes the logical structure of the data and its relationships.
 VERIFIER_MARKER = "Reply with exactly one word"
 
 
-def _llm_returns(monkeypatch, claims, verdict="CONFLICTS"):
+COVERAGE_MARKER = "essential ideas"
+ALL_STATED = {"ideas": [{"idea": "the main point", "stated": True}]}
+
+
+def _llm_returns(monkeypatch, claims, verdict="CONFLICTS", coverage=ALL_STATED):
     """Claim analysis returns ``claims``; the second-opinion check returns
     ``verdict`` (only asked when a contradiction was flagged)."""
 
     def fake(prompt):
         if VERIFIER_MARKER in prompt:
             return verdict
+        if COVERAGE_MARKER in prompt:
+            return coverage if isinstance(coverage, str) else json.dumps(coverage)
         return json.dumps({"claims": claims})
 
     monkeypatch.setattr(evaluation_service, "generate_response", fake)
@@ -206,6 +212,9 @@ def _llm_sequence(monkeypatch, replies):
     calls = {"n": 0}
 
     def fake(prompt):
+        if COVERAGE_MARKER in prompt:
+            return json.dumps(ALL_STATED)
+
         reply = replies[min(calls["n"], len(replies) - 1)]
         calls["n"] += 1
         return json.dumps({"claims": reply})
@@ -471,3 +480,85 @@ def test_unparseable_model_reply_does_not_crash_grading(monkeypatch):
     result = _evaluate()
 
     assert result["result"] in {"correct", "partially_correct", "incorrect"}
+
+
+SUPPORTED = [
+    {
+        "claim": "It describes the logical structure of the data.",
+        "evidence": "describes the logical structure of the data",
+        "assessment": "supported",
+    }
+]
+
+
+def test_answer_missing_essential_ideas_is_partial(monkeypatch):
+    _llm_returns(
+        monkeypatch,
+        SUPPORTED,
+        coverage={
+            "ideas": [
+                {"idea": "what data is stored", "stated": True},
+                {"idea": "how the data is related", "stated": False},
+            ]
+        },
+    )
+
+    result = _evaluate()
+
+    assert result["result"] == "partially_correct"
+    assert result["score"] == 0.5
+    assert result["misconception"] is None
+    assert "how the data is related" in result["feedback"]
+
+
+def test_answer_stating_most_ideas_is_correct(monkeypatch):
+    ideas = [{"idea": f"idea {n}", "stated": n != 4} for n in range(1, 5)]
+    _llm_returns(monkeypatch, SUPPORTED, coverage={"ideas": ideas})
+
+    assert _evaluate()["result"] == "correct"  # 3 of 4 stated
+
+
+def test_unusable_coverage_reply_falls_back_to_keywords(monkeypatch):
+    _llm_returns(monkeypatch, SUPPORTED, coverage="not json at all")
+
+    # STUDENT shares most key words with EXPECTED: stays correct.
+    assert _evaluate()["result"] == "correct"
+
+    # A supported but vague answer sharing almost no key words is only
+    # partly credited.
+    _llm_returns(
+        monkeypatch,
+        [
+            {
+                "claim": "It is a kind of diagram.",
+                "evidence": "a kind of diagram",
+                "assessment": "supported",
+            }
+        ],
+        coverage="not json at all",
+    )
+    result = _evaluate("It is a kind of diagram.")
+
+    assert result["result"] == "partially_correct"
+
+
+def test_a_failing_coverage_call_does_not_break_grading(monkeypatch):
+    def fake(prompt):
+        if COVERAGE_MARKER in prompt:
+            raise RuntimeError("model unavailable")
+        return json.dumps({"claims": SUPPORTED})
+
+    monkeypatch.setattr(evaluation_service, "generate_response", fake)
+
+    assert _evaluate()["result"] == "correct"
+
+
+def test_coverage_check_can_be_switched_off(monkeypatch):
+    monkeypatch.setattr(evaluation_service.settings, "coverage_check", False)
+    _llm_returns(
+        monkeypatch,
+        SUPPORTED,
+        coverage={"ideas": [{"idea": "x", "stated": False}]},
+    )
+
+    assert _evaluate()["result"] == "correct"
