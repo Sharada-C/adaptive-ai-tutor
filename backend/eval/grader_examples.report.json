@@ -1,0 +1,150 @@
+{
+  "total": 14,
+  "agreement": 0.9285714285714286,
+  "false_credit": 0,
+  "should_fail": 7,
+  "false_reject": 1,
+  "should_pass": 7,
+  "rows": [
+    {
+      "question": "What is the primary function of the cell wall in plant cells?",
+      "expected_answer": "The primary function of the cell wall in plant cells is to provide structural support, rigidity, and mechanical protection while preventing the cell from bursting when water enters.",
+      "student_answer": "The primary function of the cell wall in plant cells is to provide structural support, rigidity, and protection, giving the cell its fixed shape.",
+      "label": "correct",
+      "note": "real answer from the diagnostic (graded 0% before the fixes)",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the primary function of the cell wall in plant cells?",
+      "expected_answer": "The primary function of the cell wall in plant cells is to provide structural support, rigidity, and mechanical protection while preventing the cell from bursting when water enters.",
+      "student_answer": "It gives the cell its shape and support.",
+      "label": "correct",
+      "note": "paraphrase, less detail",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the primary function of the cell wall in plant cells?",
+      "expected_answer": "The primary function of the cell wall in plant cells is to provide structural support, rigidity, and mechanical protection while preventing the cell from bursting when water enters.",
+      "student_answer": "It protects the cell and keeps it from bursting when it takes in water.",
+      "label": "correct",
+      "note": "covers protection and bursting",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the primary function of the cell wall in plant cells?",
+      "expected_answer": "The primary function of the cell wall in plant cells is to provide structural support, rigidity, and mechanical protection while preventing the cell from bursting when water enters.",
+      "student_answer": "It makes energy for the cell.",
+      "label": "incorrect",
+      "note": "wrong function",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the primary function of the cell wall in plant cells?",
+      "expected_answer": "The primary function of the cell wall in plant cells is to provide structural support, rigidity, and mechanical protection while preventing the cell from bursting when water enters.",
+      "student_answer": "It controls which substances enter and leave the cell.",
+      "label": "incorrect",
+      "note": "that is the cell membrane",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the primary function of the cell wall in plant cells?",
+      "expected_answer": "The primary function of the cell wall in plant cells is to provide structural support, rigidity, and mechanical protection while preventing the cell from bursting when water enters.",
+      "student_answer": "I don't know.",
+      "label": "incorrect",
+      "note": "no content",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the primary purpose of the Calvin cycle in the light-independent reactions of photosynthesis?",
+      "expected_answer": "The Calvin cycle uses the energy from ATP and NADPH to fix CO2 into organic compounds, producing carbohydrates that can be used by the plant for energy and growth.",
+      "student_answer": "The primary purpose of the Calvin cycle is to fix atmospheric carbon dioxide (CO2) into energy-rich organic sugars (glucose) using the ATP and NADPH generated during the light-dependent reactions.",
+      "label": "correct",
+      "note": "real answer (flagged as a contradiction by the 3B model)",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the primary purpose of the Calvin cycle in the light-independent reactions of photosynthesis?",
+      "expected_answer": "The Calvin cycle uses the energy from ATP and NADPH to fix CO2 into organic compounds, producing carbohydrates that can be used by the plant for energy and growth.",
+      "student_answer": "to use the chemical energy from ATP and NADPH to convert atmospheric carbon dioxide (CO2)",
+      "label": "correct",
+      "note": "real answer (flagged as a contradiction by the 3B model)",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the primary purpose of the Calvin cycle in the light-independent reactions of photosynthesis?",
+      "expected_answer": "The Calvin cycle uses the energy from ATP and NADPH to fix CO2 into organic compounds, producing carbohydrates that can be used by the plant for energy and growth.",
+      "student_answer": "It splits water to release oxygen.",
+      "label": "incorrect",
+      "note": "that is the light-dependent reactions",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the primary purpose of the Calvin cycle in the light-independent reactions of photosynthesis?",
+      "expected_answer": "The Calvin cycle uses the energy from ATP and NADPH to fix CO2 into organic compounds, producing carbohydrates that can be used by the plant for energy and growth.",
+      "student_answer": "It makes ATP from sunlight.",
+      "label": "incorrect",
+      "note": "wrong stage",
+      "predicted": "incorrect",
+      "score": 0.0,
+      "feedback": "The answer does not demonstrate the required understanding."
+    },
+    {
+      "question": "What is the primary role of oxygen in the process of photosynthesis?",
+      "expected_answer": "Oxygen is released into the atmosphere as a byproduct of water splitting during the light-dependent reactions of photosynthesis.",
+      "student_answer": "oxygen is a waste byproduct rather than an active participant needed to drive the process forward",
+      "label": "correct",
+      "note": "real answer (flagged as a contradiction by the 3B model)",
+      "predicted": "incorrect",
+      "score": 0.3,
+      "feedback": "You wrote \"oxygen is a waste byproduct rather than an active participant needed to drive the process forward\", which conflicts with the expected answer: Oxygen is released into the atmosphere as a byproduct of water splitting during the light-dependent reactions of photosynthesis."
+    },
+    {
+      "question": "What is the primary role of oxygen in the process of photosynthesis?",
+      "expected_answer": "Oxygen is released into the atmosphere as a byproduct of water splitting during the light-dependent reactions of photosynthesis.",
+      "student_answer": "Oxygen is released when water is split.",
+      "label": "correct",
+      "note": "paraphrase",
+      "predicted": "correct",
+      "score": 1.0,
+      "feedback": "The answer demonstrates the required understanding."
+    },
+    {
+      "question": "What is the primary role of oxygen in the process of photosynthesis?",
+      "expected_answer": "Oxygen is released into the atmosphere as a byproduct of water splitting during the light-dependent reactions of photosynthesis.",
+      "student_answer": "Oxygen is the main ingredient plants use to build sugar.",
+      "label": "incorrect",
+      "note": "reversed role: CO2 is used, not oxygen",
+      "predicted": "incorrect",
+      "score": 0.3,
+      "feedback": "You wrote \"Oxygen is the main ingredient plants use to build sugar.\", which conflicts with the expected answer: Oxygen is released into the atmosphere as a byproduct of water splitting during the light-dependent reactions of photosynthesis."
+    },
+    {
+      "question": "What is the primary role of oxygen in the process of photosynthesis?",
+      "expected_answer": "Oxygen is released into the atmosphere as a byproduct of water splitting during the light-dependent reactions of photosynthesis.",
+      "student_answer": "Oxygen is absorbed by the leaves and used to make glucose.",
+      "label": "incorrect",
+      "note": "reversed direction",
+      "predicted": "incorrect",
+      "score": 0.3,
+      "feedback": "You wrote \"Oxygen is absorbed by the leaves and used to make glucose.\", which conflicts with the expected answer: Oxygen is released into the atmosphere as a byproduct of water splitting during the light-dependent reactions of photosynthesis."
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+[
+  {
+    "id": "light_reactions",
+    "text": "In the light-dependent reactions of photosynthesis, chlorophyll and other pigments in the thylakoid membranes of the chloroplast absorb light energy. This energy excites electrons, which pass along an electron transport chain between photosystem II and photosystem I. To replace the electrons lost by photosystem II, water molecules are split in a process called photolysis, releasing oxygen as a by-product and hydrogen ions into the thylakoid lumen. The resulting proton gradient drives ATP synthase to make ATP, and at the end of the chain electrons reduce NADP+ to NADPH. The ATP and NADPH produced here carry chemical energy to the next stage of photosynthesis, which takes place in the stroma."
+  },
+  {
+    "id": "calvin_cycle",
+    "text": "The Calvin cycle, also called the light-independent reactions, takes place in the stroma of the chloroplast. It does not use light directly; instead it uses the ATP and NADPH made in the light-dependent reactions. In the first stage, the enzyme rubisco attaches carbon dioxide to a five-carbon sugar called RuBP, a step known as carbon fixation. The resulting compounds are reduced using ATP and NADPH to form G3P, a three-carbon sugar. Most G3P is used to regenerate RuBP so the cycle can continue, while some leaves the cycle and is used to build glucose and other carbohydrates. Three turns of the cycle fix three molecules of carbon dioxide and produce one net G3P."
+  },
+  {
+    "id": "stomata",
+    "text": "Stomata are tiny pores, mostly on the underside of leaves, that allow carbon dioxide to enter and oxygen and water vapour to leave. Each stoma is surrounded by two guard cells. When guard cells take up water they become turgid and bend apart, opening the pore; when they lose water they become flaccid and the pore closes. Guard cells respond to light, carbon dioxide concentration and the plant hormone abscisic acid, which signals water stress and closes the stomata. Opening stomata lets photosynthesis proceed but also lets water escape, so the plant balances gas exchange against water loss."
+  },
+  {
+    "id": "transpiration",
+    "text": "Transpiration is the loss of water vapour from the aerial parts of a plant, mainly through the stomata of the leaves. As water evaporates from the surface of mesophyll cells, it creates tension that pulls water up through the xylem from the roots, a process called the transpiration pull. Cohesion between water molecules and adhesion to the xylem walls keep the water column unbroken. This flow also carries dissolved minerals from the soil to the leaves and cools the plant through evaporation. The rate of transpiration increases with heat, wind and dry air and decreases in high humidity."
+  },
+  {
+    "id": "chlorophyll",
+    "text": "Chlorophyll is the main photosynthetic pigment in plants and is found in the thylakoid membranes of chloroplasts. Chlorophyll a and chlorophyll b absorb light most strongly in the blue-violet and red parts of the spectrum and reflect green light, which is why leaves appear green. Accessory pigments such as carotenoids absorb other wavelengths, mainly blue-green, and pass the energy to chlorophyll; they also protect the leaf from excess light. In autumn chlorophyll breaks down, revealing the yellow and orange carotenoids that were present all along."
+  },
+  {
+    "id": "tcp",
+    "text": "The Transmission Control Protocol (TCP) provides reliable, ordered delivery of a stream of bytes between two hosts. Before data is sent, TCP sets up a connection with a three-way handshake: the client sends a SYN segment, the server replies with SYN-ACK, and the client answers with an ACK, so both sides confirm they can send and receive and agree on initial sequence numbers. Each segment is numbered, the receiver acknowledges what it has received, and the sender retransmits segments that are not acknowledged in time. TCP also performs flow control and congestion control, which makes it slower than connectionless protocols but dependable for web pages, email and file transfer."
+  },
+  {
+    "id": "udp",
+    "text": "The User Datagram Protocol (UDP) is a connectionless transport protocol. It sends independent datagrams without setting up a connection, without acknowledgements and without retransmission. Because there is no handshake or waiting for lost data, UDP has very low overhead and latency, but datagrams may be lost, duplicated or arrive out of order, and the application must deal with that if it matters. UDP is used for live video and voice calls, online games and DNS queries, where a late packet is worth less than a fast one."
+  },
+  {
+    "id": "dns",
+    "text": "The Domain Name System (DNS) translates human-readable domain names such as example.com into the IP addresses that computers use to locate each other. When a browser needs an address, it asks a recursive resolver, usually run by the internet provider. If the answer is not cached, the resolver queries a root server, then a top-level domain server such as the one for .com, and finally the authoritative name server for the domain, which returns the record. Results are cached for a time set by the record's TTL so that repeated lookups are fast. Common record types include A for IPv4 addresses, AAAA for IPv6 addresses and MX for mail servers."
+  },
+  {
+    "id": "dhcp",
+    "text": "The Dynamic Host Configuration Protocol (DHCP) automatically gives devices the network settings they need when they join a network. A new device broadcasts a discover message, a DHCP server replies with an offer, the device requests the offered address, and the server acknowledges it; this is often remembered as DORA. The server assigns an IP address for a limited lease time together with the subnet mask, the default gateway and the DNS server addresses. Without DHCP, an administrator would have to configure every device by hand and avoid address conflicts manually."
+  },
+  {
+    "id": "router_switch",
+    "text": "A switch connects devices within a single local area network. It learns the MAC address of each connected device and forwards Ethernet frames only to the port where the destination MAC address is found, working at the data link layer. A router connects different networks, for example a home network and the internet. It works at the network layer, reads the destination IP address in each packet and uses a routing table to choose the next hop. A router also separates broadcast domains and often performs network address translation, while a switch forwards broadcasts to all its ports."
+  },
+  {
+    "id": "keys",
+    "text": "A primary key is a column, or set of columns, that uniquely identifies each row in a table. Its values must be unique and cannot be null, and a table can have only one primary key. A foreign key is a column in one table that refers to the primary key of another table, which links the rows of the two tables and enforces referential integrity: a value cannot be inserted unless the referenced row exists, and a referenced row cannot be deleted without handling the dependent rows. Candidate keys are columns that could serve as the primary key but were not chosen."
+  },
+  {
+    "id": "acid",
+    "text": "ACID describes the properties that make database transactions reliable. Atomicity means a transaction is all-or-nothing: if any step fails, all changes are rolled back. Consistency means a transaction takes the database from one valid state to another, respecting constraints. Isolation means concurrent transactions do not see each other's partial work, as if they ran one after another. Durability means that once a transaction is committed, its changes survive crashes, usually by writing to a log on disk. A bank transfer that debits one account and credits another relies on these properties so that money is never lost or created."
+  },
+  {
+    "id": "process_thread",
+    "text": "A process is a program in execution with its own address space, open files and resources, so processes are isolated from each other. A thread is a unit of execution inside a process. All threads of a process share its memory and resources, but each has its own stack and registers. Creating a thread and switching between threads is cheaper than for processes because no new address space is needed, and threads can communicate through shared memory. The drawback is that shared data needs synchronisation, and one faulty thread can crash the whole process."
+  },
+  {
+    "id": "deadlock",
+    "text": "A deadlock occurs when a set of processes are blocked forever because each holds a resource and waits for a resource held by another process in the set. Four conditions must hold together: mutual exclusion, hold and wait, no preemption, and circular wait. Operating systems can prevent deadlock by breaking one of these conditions, avoid it with algorithms such as the banker's algorithm, detect it and then recover by terminating processes or preempting resources, or simply ignore it, as many general-purpose systems do."
+  },
+  {
+    "id": "stack",
+    "text": "A stack is a linear data structure that follows the last-in, first-out (LIFO) principle: the most recently added element is the first to be removed. The main operations are push, which adds an element to the top, pop, which removes the top element, and peek, which reads it without removing it. Stacks are used for function call management, undo features, expression evaluation and depth-first search. All of these operations take constant time when the stack is implemented with an array or a linked list."
+  },
+  {
+    "id": "queue",
+    "text": "A queue is a linear data structure that follows the first-in, first-out (FIFO) principle: elements are added at the rear and removed from the front, so the oldest element is served first, like people waiting in a line. The main operations are enqueue, which adds an element at the rear, and dequeue, which removes the element at the front. Queues are used for task scheduling, buffering data between processes and breadth-first search. Variants include the circular queue, the double-ended queue and the priority queue, in which elements are served by priority rather than arrival order."
+  }
+]
