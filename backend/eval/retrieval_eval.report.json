@@ -1,0 +1,76 @@
+{
+  "corpus_passages": 16,
+  "questions": 24,
+  "limit": 3,
+  "threshold": 0.5,
+  "ranking_only": {
+    "answerable": 20,
+    "recall_at_3": 1.0,
+    "top1": 1.0,
+    "mrr": 1.0,
+    "misses": [],
+    "unanswerable": 4,
+    "correctly_rejected": 0,
+    "wrongly_answered": [
+      {
+        "question": "What is the capital of Australia?",
+        "retrieved": [
+          "dns",
+          "dhcp",
+          "calvin_cycle"
+        ]
+      },
+      {
+        "question": "How do I bake sourdough bread at home?",
+        "retrieved": [
+          "calvin_cycle",
+          "router_switch",
+          "keys"
+        ]
+      },
+      {
+        "question": "What does the mitochondrion do in a cell?",
+        "retrieved": [
+          "light_reactions",
+          "calvin_cycle",
+          "stomata"
+        ]
+      },
+      {
+        "question": "How does a binary search tree stay balanced?",
+        "retrieved": [
+          "stack",
+          "deadlock",
+          "acid"
+        ]
+      }
+    ]
+  },
+  "with_threshold": {
+    "answerable": 20,
+    "recall_at_3": 1.0,
+    "top1": 1.0,
+    "mrr": 1.0,
+    "misses": [],
+    "unanswerable": 4,
+    "correctly_rejected": 2,
+    "wrongly_answered": [
+      {
+        "question": "What does the mitochondrion do in a cell?",
+        "retrieved": [
+          "light_reactions",
+          "calvin_cycle",
+          "stomata"
+        ]
+      },
+      {
+        "question": "How does a binary search tree stay balanced?",
+        "retrieved": [
+          "stack",
+          "deadlock",
+          "acid"
+        ]
+      }
+    ]
+  }
+}

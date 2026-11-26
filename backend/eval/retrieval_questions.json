@@ -1,0 +1,140 @@
+[
+  {
+    "question": "Where inside the chloroplast do the reactions that need light take place, and what do they produce?",
+    "gold": [
+      "light_reactions"
+    ]
+  },
+  {
+    "question": "How does the plant turn carbon dioxide into sugar without using light directly?",
+    "gold": [
+      "calvin_cycle"
+    ]
+  },
+  {
+    "question": "What makes the tiny pores on leaves open and close?",
+    "gold": [
+      "stomata"
+    ]
+  },
+  {
+    "question": "Why does water keep moving up from the roots to the leaves of a tall plant?",
+    "gold": [
+      "transpiration"
+    ]
+  },
+  {
+    "question": "Which colours of light does the green pigment in leaves take in?",
+    "gold": [
+      "chlorophyll"
+    ]
+  },
+  {
+    "question": "How do two computers agree to start a reliable connection before sending data?",
+    "gold": [
+      "tcp"
+    ]
+  },
+  {
+    "question": "Which protocol suits live video because it does not wait for lost packets?",
+    "gold": [
+      "udp"
+    ]
+  },
+  {
+    "question": "How does a browser find the IP address behind a website name?",
+    "gold": [
+      "dns"
+    ]
+  },
+  {
+    "question": "How does a laptop automatically receive its network settings when it joins a wifi network?",
+    "gold": [
+      "dhcp"
+    ]
+  },
+  {
+    "question": "Which device forwards traffic between different networks and which one stays inside a LAN?",
+    "gold": [
+      "router_switch"
+    ]
+  },
+  {
+    "question": "How can each row of a table be uniquely identified, and how do tables point at each other?",
+    "gold": [
+      "keys"
+    ]
+  },
+  {
+    "question": "What guarantees stop a bank transfer from being applied only halfway?",
+    "gold": [
+      "acid"
+    ]
+  },
+  {
+    "question": "Why is creating a thread cheaper than starting a separate program?",
+    "gold": [
+      "process_thread"
+    ]
+  },
+  {
+    "question": "What happens when two programs each wait for a resource that the other one holds?",
+    "gold": [
+      "deadlock"
+    ]
+  },
+  {
+    "question": "Which data structure removes the most recently added item first?",
+    "gold": [
+      "stack"
+    ]
+  },
+  {
+    "question": "Which structure serves items in the order they arrived, like a line of people?",
+    "gold": [
+      "queue"
+    ]
+  },
+  {
+    "question": "What is the role of ATP and NADPH in making glucose?",
+    "gold": [
+      "calvin_cycle",
+      "light_reactions"
+    ]
+  },
+  {
+    "question": "How is opening the stomata connected to a plant losing water?",
+    "gold": [
+      "stomata",
+      "transpiration"
+    ]
+  },
+  {
+    "question": "What does the exchange of SYN, SYN-ACK and ACK accomplish?",
+    "gold": [
+      "tcp"
+    ]
+  },
+  {
+    "question": "Why can datagrams be lost or arrive in a different order without the sender noticing?",
+    "gold": [
+      "udp"
+    ]
+  },
+  {
+    "question": "What is the capital of Australia?",
+    "gold": []
+  },
+  {
+    "question": "How do I bake sourdough bread at home?",
+    "gold": []
+  },
+  {
+    "question": "What does the mitochondrion do in a cell?",
+    "gold": []
+  },
+  {
+    "question": "How does a binary search tree stay balanced?",
+    "gold": []
+  }
+]
