@@ -3,11 +3,13 @@
 Run from the ``backend`` folder::
 
     python -m app.tutor.label_answers
+    python -m app.tutor.label_answers eval/grader_holdout_to_label.json
 
 It shows each question, the reference answer and one student answer, and asks
-for your verdict. Progress is saved after every answer to
-``eval/grader_labels.json`` (the file ``grader_agreement`` reads), so you can
-stop and continue later.
+for your verdict. Progress is saved after every answer, so you can stop and
+continue later. By default the verdicts go to ``eval/grader_labels.json``;
+for another file the name is derived (``x_to_label.json`` -> ``x_labels.json``).
+``grader_agreement`` reads the labels file.
 
 Judge each answer against the reference answer:
 
@@ -20,6 +22,7 @@ Judge each answer against the reference answer:
 """
 
 import json
+import sys
 from pathlib import Path
 
 EVAL_DIR = Path(__file__).resolve().parents[2] / "eval"
@@ -52,7 +55,8 @@ def save_progress(examples: list[dict], target: Path) -> None:
     )
 
 
-def run(source: Path = SOURCE, target: Path = TARGET, ask=input, show=print) -> int:
+def run(source: Path = SOURCE, target: Path = TARGET, ask=None, show=print) -> int:
+    ask = ask or input
     examples = load_progress(source, target)
     todo = [item for item in examples if not item["label"]]
 
@@ -91,3 +95,24 @@ def run(source: Path = SOURCE, target: Path = TARGET, ask=input, show=print) -> 
 
 if __name__ == "__main__":
     run()
+
+
+def default_target(source: Path) -> Path:
+    if source == SOURCE:
+        return TARGET
+
+    return source.with_name(source.stem.replace("_to_label", "") + "_labels.json")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Optional arguments: the file to label, then the file to save to."""
+
+    args = sys.argv[1:] if argv is None else argv
+    source = Path(args[0]) if args else SOURCE
+    target = Path(args[1]) if len(args) > 1 else default_target(source)
+
+    return run(source, target)
+
+
+if __name__ == "__main__":
+    main()
