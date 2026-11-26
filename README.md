@@ -1,6 +1,7 @@
 # Adaptive AI Tutor
 
-A personalised tutor that teaches only from study material you provide. It
+A personalised tutor that teaches from study material: your own uploads and
+cited Wikipedia articles, never from the model's memory alone. It
 assesses what a learner already knows, tracks mastery per concept, and chooses
 what to do next: teach, reteach a misconception, practise, or move on.
 
@@ -14,8 +15,9 @@ what to do next: teach, reteach a misconception, practise, or move on.
 - [Ollama](https://ollama.com) with two models:
 
 ```bash
-ollama pull llama3.2:3b
-ollama pull nomic-embed-text
+ollama pull llama3.2:3b        # tutor model (default)
+ollama pull nomic-embed-text   # embeddings
+ollama pull qwen2.5:7b         # recommended for grading, see "Grading quality"
 ```
 
 ## Run it
@@ -28,6 +30,7 @@ docker compose up -d
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cp ../.env.example .env        # then set SECRET_KEY, or logins reset on every restart
 python -m alembic -c ../alembic.ini upgrade head   # builds the schema
 python seed_demo.py            # demo "Computer Networks" course + study material
 uvicorn app.main:app --port 8000
@@ -97,6 +100,11 @@ no password until an admin sets one.
 Typical flow: choose or generate a course → upload study material → optional
 diagnostic → the planner picks the next concept and the adaptive engine decides
 whether to teach, reteach, practise or move on → quiz → mastery updates → repeat.
+
+Mastery per concept is the recency-weighted average of the last five answers,
+pulled toward zero by a small prior (`PRIOR_WEIGHT` in `mastery_service.py`):
+one correct answer gives 0.67, two give 0.86, so a concept needs repeated
+success to reach the 0.80 advance threshold.
 
 Study material uploaded for a subject (PDF, TXT or Markdown) grounds lessons,
 quizzes and the diagnostic for every concept in it.
@@ -182,3 +190,8 @@ stored. To measure how well a model agrees with human judgement, edit
 from `backend`, `python -m app.tutor.grader_agreement`. Run it again with a
 different `GRADER_MODEL` to compare models; report the numbers you measured,
 not estimates.
+
+## License and attribution
+
+Code: MIT, see [LICENSE](LICENSE). Course material fetched from Wikipedia is
+CC BY-SA 4.0; each chunk keeps its article title and URL as its source.

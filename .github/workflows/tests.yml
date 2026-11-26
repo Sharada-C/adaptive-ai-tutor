@@ -20,9 +20,9 @@ jobs:
         env:
           POSTGRES_USER: tutor
           POSTGRES_PASSWORD: tutor_password
-          POSTGRES_DB: adaptive_tutor
+          POSTGRES_DB: adaptive_tutor_test
         options: >-
-          --health-cmd "pg_isready -U tutor -d adaptive_tutor"
+          --health-cmd "pg_isready -U tutor -d adaptive_tutor_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -50,7 +50,7 @@ jobs:
 
       - name: Build schema with Alembic (fresh database)
         env:
-          DATABASE_URL: postgresql+psycopg://tutor:tutor_password@localhost:5432/adaptive_tutor
+          DATABASE_URL: postgresql+psycopg://tutor:tutor_password@localhost:5432/adaptive_tutor_test
         run: |
           alembic -c alembic.ini upgrade head
           alembic -c alembic.ini check
@@ -58,7 +58,7 @@ jobs:
       - name: Run tests
         working-directory: backend
         env:
-          DATABASE_URL: postgresql+psycopg://tutor:tutor_password@localhost:5432/adaptive_tutor
+          DATABASE_URL: postgresql+psycopg://tutor:tutor_password@localhost:5432/adaptive_tutor_test
         run: |
           pytest -q --cov=app --cov-report=term-missing --cov-fail-under=75
 

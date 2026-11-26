@@ -18,6 +18,7 @@ vi.mock("./api", () => {
     getConcepts: vi.fn(),
     getMastery: vi.fn(),
     getLibrary: vi.fn(),
+    deleteCourse: vi.fn(),
     getJournal: vi.fn(),
     getProfile: vi.fn(),
     setLearningLevel: vi.fn(),
@@ -449,6 +450,39 @@ describe("my learning", () => {
 
     expect(await screen.findByLabelText(/type any topic/i)).toBeInTheDocument();
     expect(screen.queryByText(/Photosynthesis \(my course\)/)).not.toBeInTheDocument();
+  });
+
+  it("deletes one of the learner's own courses after confirming", async () => {
+    api.getLibrary.mockResolvedValue([COURSE]);
+    api.deleteCourse.mockResolvedValue(null);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Computer Networks");
+    await user.click(screen.getByRole("button", { name: /my learning/i }));
+    await user.click(await screen.findByRole("button", { name: /delete course/i }));
+
+    // Nothing is deleted until the learner confirms.
+    expect(api.deleteCourse).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /yes, delete it/i }));
+
+    await waitFor(() => expect(api.deleteCourse).toHaveBeenCalledWith(1));
+    expect(await screen.findByText(/haven't started any course/i)).toBeInTheDocument();
+  });
+
+  it("does not offer delete for shared courses", async () => {
+    api.getLibrary.mockResolvedValue([{ ...COURSE, is_private: false }]);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Computer Networks");
+    await user.click(screen.getByRole("button", { name: /my learning/i }));
+    await screen.findByRole("button", { name: /^continue$/i });
+
+    expect(screen.queryByRole("button", { name: /delete course/i })).not.toBeInTheDocument();
   });
 
   it("offers a new topic from the library", async () => {

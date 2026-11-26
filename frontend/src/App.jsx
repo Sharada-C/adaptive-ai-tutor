@@ -688,6 +688,26 @@ function Tutor({
     await continueLearning(courseId);
   };
 
+  const removeCourse = async (courseId) => {
+    try {
+      setLibraryError("");
+      await api.deleteCourse(courseId);
+
+      setLibrary((previous) =>
+        previous.filter((course) => course.subject_id !== courseId)
+      );
+      setSubjects((previous) =>
+        previous.filter((subject) => subject.id !== courseId)
+      );
+
+      if (String(courseId) === activeSubjectId) {
+        handleSubjectChange("");
+      }
+    } catch (error) {
+      setLibraryError(error.message);
+    }
+  };
+
   const showNewTopic = () => {
     setScreen("setup");
   };
@@ -779,6 +799,7 @@ function Tutor({
         error={libraryError}
         loadJournal={(subjectId) => api.getJournal(studentId, subjectId)}
         onContinue={continueCourse}
+        onDelete={removeCourse}
         onNewTopic={showNewTopic}
         busy={loadingLesson}
       />
