@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # Optional separate (usually larger) model used only for grading answers.
     # Empty = use llm_model.
     grader_model: str = ""
+    # After claims are checked, also verify the answer covers the reference.
+    coverage_check: bool = True
     embedding_model: str = "nomic-embed-text"
 
     # A concept is 'mastered', and unlocks what depends on it, at this score.

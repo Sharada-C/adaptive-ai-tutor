@@ -229,6 +229,94 @@ def _keyword_recall(question: str, expected_answer: str, student_answer: str) ->
     return len(needed & _stems(student_answer)) / len(needed)
 
 
+COVERAGE_ENOUGH = 0.75
+# With no usable model reply, an answer sharing less than this fraction of the
+# reference's key words is treated as covering only part of it.
+COVERAGE_FALLBACK_RECALL = 0.20
+
+
+def _coverage(
+    question: str,
+    expected_answer: str,
+    student_answer: str,
+) -> tuple[float, list[str]] | None:
+    """How much of the reference the answer states: (fraction, missing ideas).
+
+    Checking that nothing contradicts the reference is not enough: a vague
+    answer such as "a thread is a smaller part of a process" contradicts
+    nothing yet leaves out the point. The model lists the reference's essential
+    ideas and says which ones the answer states. ``None`` when the reply
+    is unusable, so the caller can fall back to a keyword check.
+    """
+
+    prompt = f"""You are checking how completely a student's answer covers a reference answer.
+
+QUESTION:
+{question}
+
+REFERENCE ANSWER:
+{expected_answer}
+
+STUDENT ANSWER:
+{student_answer}
+
+First list the essential ideas of the reference answer: the facts a good
+answer must contain (at most 4, each a short phrase). Then, for each idea, say
+whether the student's answer states it or clearly means it.
+
+Rules:
+- Different wording is fine. Judge meaning, not words.
+- Extra detail that is not in the reference is not required.
+- If the student's answer is vague about an idea, it is not stated.
+
+Reply with JSON only:
+{{"ideas": [{{"idea": "<short phrase>", "stated": true}}]}}"""
+
+    try:
+        parsed = _extract_json_object(_judge(prompt).strip())
+        ideas = parsed.get("ideas")
+
+        if not isinstance(ideas, list) or not ideas:
+            return None
+
+        stated = 0
+        missing: list[str] = []
+
+        for item in ideas[:6]:
+            if not isinstance(item, dict):
+                return None
+
+            flag = item.get("stated")
+            is_stated = flag is True or str(flag).strip().lower() in {"true", "yes"}
+
+            if is_stated:
+                stated += 1
+            else:
+                missing.append(str(item.get("idea", "")).strip())
+
+        considered = min(len(ideas), 6)
+
+        return stated / considered, [m for m in missing if m]
+    except Exception as error:  # an optional check must never fail grading
+        logger.warning("coverage check failed: %s", error)
+
+        return None
+
+
+def _partial_for_coverage(expected_answer: str, missing: list[str]) -> dict:
+    if missing:
+        detail = "it does not yet mention: " + "; ".join(missing) + "."
+    else:
+        detail = f"it covers only part of the expected answer: {expected_answer.strip()}"
+
+    return {
+        "score": 0.5,
+        "result": "partially_correct",
+        "feedback": f"Correct as far as it goes, but {detail}",
+        "misconception": None,
+    }
+
+
 def _second_opinion(
     question: str,
     expected_answer: str,
@@ -662,6 +750,20 @@ Return ONLY the JSON object.
     # ---------------------------------------------------------
 
     if supported_claims:
+        if settings.coverage_check:
+            coverage = _coverage(question, expected_answer, student_answer)
+
+            if coverage is not None:
+                fraction, missing = coverage
+
+                if fraction < COVERAGE_ENOUGH:
+                    return _partial_for_coverage(expected_answer, missing)
+            elif (
+                _keyword_recall(question, expected_answer, student_answer)
+                < COVERAGE_FALLBACK_RECALL
+            ):
+                return _partial_for_coverage(expected_answer, [])
+
         return {
             "score": 1.0,
             "result": "correct",
