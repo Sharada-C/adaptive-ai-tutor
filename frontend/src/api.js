@@ -161,6 +161,9 @@ export const getProfile = (userId) => request(`/students/${userId}/profile`);
 export const getMastery = (studentId) =>
   request(`/students/${studentId}/mastery`);
 
+export const deleteCourse = (subjectId) =>
+  request(`/subjects/${subjectId}`, { method: "DELETE" });
+
 export const getLibrary = (studentId) =>
   request(`/students/${studentId}/library`);
 

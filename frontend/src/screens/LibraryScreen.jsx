@@ -95,6 +95,7 @@ export default function LibraryScreen({
   error,
   loadJournal,
   onContinue,
+  onDelete,
   onNewTopic,
   busy,
 }) {
@@ -102,6 +103,7 @@ export default function LibraryScreen({
   const [journals, setJournals] = useState({});
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalError, setJournalError] = useState("");
+  const [confirmingId, setConfirmingId] = useState(null);
 
   const toggleJournal = async (subjectId) => {
     if (openId === subjectId) {
@@ -195,7 +197,45 @@ export default function LibraryScreen({
                     ? "Hide what I've learned"
                     : "What I've learned"}
                 </button>
+
+                {course.is_private && confirmingId !== course.subject_id && (
+                  <button
+                    type="button"
+                    className="nav-button nav-button-danger"
+                    onClick={() => setConfirmingId(course.subject_id)}
+                  >
+                    Delete course
+                  </button>
+                )}
               </div>
+
+              {confirmingId === course.subject_id && (
+                <div className="misconception-box" style={{ marginTop: "14px" }}>
+                  <strong>
+                    Delete "{course.name}" and all your progress in it?
+                  </strong>
+                  <p>This cannot be undone.</p>
+                  <div className="library-actions">
+                    <button
+                      type="button"
+                      className="nav-button nav-button-danger"
+                      onClick={() => {
+                        setConfirmingId(null);
+                        onDelete(course.subject_id);
+                      }}
+                    >
+                      Yes, delete it
+                    </button>
+                    <button
+                      type="button"
+                      className="nav-button"
+                      onClick={() => setConfirmingId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {openId === course.subject_id &&
                 (journalLoading && !journals[course.subject_id] ? (

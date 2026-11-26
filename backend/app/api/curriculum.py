@@ -34,6 +34,7 @@ from app.rag.knowledge_ingestion import (
 from app.services.web_material import collect_material
 from app.services.curriculum_generator import generate_curriculum
 from app.services.curriculum_persistence import (
+    delete_subject_with_data,
     save_generated_curriculum,
 )
 
@@ -154,6 +155,28 @@ def get_concepts(
         .order_by(Concept.id)
         .all()
     )
+
+
+@router.delete("/{subject_id}", status_code=204)
+def delete_course(
+    subject_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """A learner can delete a course they created, with all progress in it."""
+
+    subject = ensure_subject_access(db, user, subject_id)
+
+    if subject.owner_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owner can delete a course.",
+        )
+
+    delete_subject_with_data(db, subject)
+    db.commit()
+
+    return Response(status_code=204)
 
 
 @router.post(

@@ -7,6 +7,13 @@ from sqlalchemy.orm import Session
 from app.models.student import AssessmentAttempt, ConceptMastery
 
 
+# A score is a recency-weighted average of the last attempts, pulled toward
+# zero by this much "imaginary" evidence. One correct answer therefore gives
+# 0.67 and two give 0.86, so a concept needs repeated success to reach the
+# 0.80 advance threshold instead of being mastered after a single answer.
+PRIOR_WEIGHT = 0.5
+
+
 def lock_mastery(db: Session, student_id: int, concept_id: int) -> ConceptMastery:
     """Return the (student, concept) mastery row, locked until commit.
 
@@ -72,5 +79,6 @@ def refresh_mastery(db: Session, mastery: ConceptMastery) -> None:
 
     if scores:
         weights = range(1, len(scores) + 1)
-        score = sum(s * w for s, w in zip(scores, weights, strict=True)) / sum(weights)
+        weighted = sum(s * w for s, w in zip(scores, weights, strict=True))
+        score = weighted / (sum(weights) + PRIOR_WEIGHT)
         mastery.mastery_score = max(0.0, min(1.0, score))

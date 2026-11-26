@@ -60,11 +60,12 @@ def learner():
     db.add(Misconception(student_id=sid, concept_id=todo.id, description="Thinks Y is Z", resolved=False))
     db.commit()
 
+    ids = [mine.id, untouched.id, theirs.id]
+
     yield {**people, "mine": mine.id, "untouched": untouched.id, "theirs": theirs.id,
            "done": done.id, "todo": todo.id}
 
     db.rollback()
-    ids = [mine.id, untouched.id, theirs.id]
     db.query(Misconception).filter(Misconception.student_id == sid).delete()
     db.query(AssessmentAttempt).filter(AssessmentAttempt.student_id == sid).delete()
     db.query(QuizQuestionRecord).filter(QuizQuestionRecord.student_id == sid).delete()
@@ -132,3 +133,51 @@ def test_journal_of_someone_elses_private_course_is_404(learner):
     )
 
     assert response.status_code == 404
+
+
+def test_owner_can_delete_a_course_and_its_progress(learner):
+    response = client.delete(
+        f"/subjects/{learner['mine']}", headers=learner["me"]["headers"]
+    )
+
+    assert response.status_code == 204
+
+    db = SessionLocal()
+    sid = learner["me"]["student"]
+
+    assert db.get(Subject, learner["mine"]) is None
+    assert db.query(Concept).filter_by(subject_id=learner["mine"]).count() == 0
+    assert db.query(ConceptMastery).filter_by(student_id=sid).count() == 0
+    assert db.query(AssessmentAttempt).filter_by(student_id=sid).count() == 0
+    assert db.query(QuizQuestionRecord).filter_by(student_id=sid).count() == 0
+    assert db.query(Misconception).filter_by(student_id=sid).count() == 0
+    db.close()
+
+    again = client.get(
+        f"/students/{sid}/library", headers=learner["me"]["headers"]
+    )
+    assert learner["mine"] not in [c["subject_id"] for c in again.json()]
+
+
+def test_nobody_else_can_delete_a_private_course(learner):
+    response = client.delete(
+        f"/subjects/{learner['mine']}", headers=learner["other"]["headers"]
+    )
+
+    assert response.status_code == 404
+
+    db = SessionLocal()
+    assert db.get(Subject, learner["mine"]) is not None
+    db.close()
+
+
+def test_shared_courses_cannot_be_deleted_by_students(learner):
+    response = client.delete(
+        f"/subjects/{learner['untouched']}", headers=learner["me"]["headers"]
+    )
+
+    assert response.status_code == 403
+
+    db = SessionLocal()
+    assert db.get(Subject, learner["untouched"]) is not None
+    db.close()

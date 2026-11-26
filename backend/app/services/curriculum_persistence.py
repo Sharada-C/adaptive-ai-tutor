@@ -210,3 +210,78 @@ def save_generated_curriculum(
     db.refresh(subject)
 
     return subject
+
+def delete_subject_with_data(db, subject) -> None:
+    """Remove a course and everything that points at it, in one transaction.
+
+    The foreign keys below do not cascade, so the rows are removed explicitly,
+    children first. The caller commits.
+    """
+
+    from sqlalchemy import delete, or_
+
+    from app.models.curriculum import Concept, concept_prerequisites
+    from app.models.knowledge import KnowledgeChunk
+    from app.models.student import (
+        AssessmentAttempt,
+        ConceptMastery,
+        DiagnosticQuestion,
+        DiagnosticSession,
+        Misconception,
+        QuizQuestionRecord,
+    )
+
+    concept_ids = [
+        row[0]
+        for row in db.query(Concept.id).filter(Concept.subject_id == subject.id)
+    ]
+    session_ids = [
+        row[0]
+        for row in db.query(DiagnosticSession.id).filter(
+            DiagnosticSession.subject_id == subject.id
+        )
+    ]
+
+    if session_ids or concept_ids:
+        db.execute(
+            delete(DiagnosticQuestion).where(
+                or_(
+                    DiagnosticQuestion.session_id.in_(session_ids),
+                    DiagnosticQuestion.concept_id.in_(concept_ids),
+                )
+            )
+        )
+
+    db.execute(
+        delete(DiagnosticSession).where(DiagnosticSession.subject_id == subject.id)
+    )
+
+    if concept_ids:
+        for model in (
+            QuizQuestionRecord,
+            AssessmentAttempt,
+            Misconception,
+            ConceptMastery,
+        ):
+            db.execute(delete(model).where(model.concept_id.in_(concept_ids)))
+
+        db.execute(
+            delete(concept_prerequisites).where(
+                or_(
+                    concept_prerequisites.c.concept_id.in_(concept_ids),
+                    concept_prerequisites.c.prerequisite_id.in_(concept_ids),
+                )
+            )
+        )
+
+    db.execute(
+        delete(KnowledgeChunk).where(
+            or_(
+                KnowledgeChunk.subject_id == subject.id,
+                KnowledgeChunk.concept_id.in_(concept_ids),
+            )
+        )
+    )
+
+    db.execute(delete(Concept).where(Concept.subject_id == subject.id))
+    db.execute(delete(Subject).where(Subject.id == subject.id))

@@ -17,6 +17,27 @@ from app.models import Subject, Concept, User, StudentProfile
 TEST_PASSWORD = "pytest-password-1"
 
 
+def pytest_configure(config):
+    """The tests create and delete rows, so never run them on a real database.
+
+    Point DATABASE_URL at a database whose name ends in ``_test``.
+    """
+
+    from sqlalchemy.engine import make_url
+
+    from app.core.config import settings
+
+    database = make_url(settings.database_url).database or ""
+
+    if not database.endswith("_test"):
+        pytest.exit(
+            f"Refusing to run tests on database '{database}'. These tests "
+            "create and delete data. Set DATABASE_URL to a database whose "
+            "name ends in '_test' (see README, Tests).",
+            returncode=2,
+        )
+
+
 def ensure_account(username: str, role: str = "student") -> int:
     """Create (or reset) a test account with a known password; return id."""
 
