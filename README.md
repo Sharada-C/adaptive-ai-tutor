@@ -183,19 +183,25 @@ Neither suite needs Ollama.
 
 ## Grading quality
 
-Answers are graded by a local model, which is the weakest link of the tutor.
-A flagged contradiction only counts when a second, simpler check explicitly
-agrees; otherwise the answer gets partial credit and no misconception is
-stored. To measure how well a model agrees with human judgement, edit
-`backend/eval/grader_examples.json` (add your own labelled answers) and run,
-from `backend`, `python -m app.tutor.grader_agreement`. Run it again with a
-different `GRADER_MODEL` to compare models; report the numbers you measured,
-not estimates.
+## Grading quality
 
-To build an independent labelled set, run `python -m app.tutor.label_answers`
-from `backend`: it shows 33 student answers (`eval/grader_to_label.json`, no
-suggested grades) and saves your verdicts to `eval/grader_labels.json`. Then
-`python -m app.tutor.grader_agreement eval/grader_labels.json`.
+Answers are graded by a local model, which is the weakest link of the tutor. A flagged contradiction only counts when a second, simpler check explicitly agrees; otherwise the answer gets partial credit and no misconception is stored. When `COVERAGE_CHECK=true` (default), answers with no contradictions are also checked to confirm they cover at least 75% of the reference answer's essential ideas before receiving full credit.
+
+We evaluated the grader against two blind human-labelled sets (67 student answers across 16 questions in biology, networking, databases, and operating systems; all reports in `backend/eval/`):
+
+| Dataset | Grader model & config | Exact agreement (`c`/`p`/`i`) | False rejects (`c` -> `i`) | False credit (`i` -> `c`) |
+| :--- | :--- | :---: | :---: | :---: |
+| Dev set (33 answers, 8 questions) | `llama3.2:3b` (claims only) | 58% (19/33) | 1 / 9 | 1 / 14 |
+| Dev set (33 answers, 8 questions) | `qwen2.5:7b` (claims only) | 67% (22/33) | 0 / 9 | 1 / 14 |
+| Dev set (33 answers, 8 questions) | `qwen2.5:7b` + coverage *(in-sample)* | **79% (26/33)** | **0 / 9** | **0 / 14** |
+| **Held-out set (34 unseen answers, 8 questions)** | **`qwen2.5:7b` + coverage *(headline)*** | **76% (26/34)** | **0 / 13** | **0 / 10** |
+
+On the unseen held-out set, `qwen2.5:7b` with the coverage check achieved **76% exact three-way agreement** with **zero false rejects (0/13)** and **zero false credit (0/10)** (~5.2s per answer on local Ollama).
+
+To reproduce or extend the benchmark from `backend/`:
+- Label answers blind: `python -m app.tutor.label_answers eval/grader_holdout_to_label.json`
+- Measure agreement: `python -m app.tutor.grader_agreement eval/grader_holdout_labels.json`
+
 
 ## License and attribution
 

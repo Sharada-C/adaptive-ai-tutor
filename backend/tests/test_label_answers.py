@@ -50,3 +50,13 @@ def test_skipped_and_invalid_input_are_not_saved_as_labels(tmp_path):
     )
 
     assert [e["label"] for e in json.loads(target.read_text())] == ["correct"]
+
+
+def test_main_derives_the_labels_file_name_from_the_source(tmp_path, monkeypatch):
+    source = tmp_path / "grader_holdout_to_label.json"
+    source.write_text(json.dumps(EXAMPLES))
+    monkeypatch.setattr("builtins.input", _answers("c", "c", "c"))
+
+    label_answers.main([str(source)])
+
+    assert (tmp_path / "grader_holdout_labels.json").exists()
