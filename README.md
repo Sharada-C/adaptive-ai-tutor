@@ -151,7 +151,7 @@ their recent answers (`GET /students/{id}/library`,
 | backend `.env` | `OLLAMA_TIMEOUT_SECONDS`, `OLLAMA_RETRIES`, `OLLAMA_RETRY_BACKOFF_SECONDS` | 120, 1, 0.5 |
 | backend `.env` | `PREREQUISITE_MASTERY_THRESHOLD` | 0.80 |
 | backend `.env` | `MAX_UPLOAD_BYTES` | 10485760 (10 MB) |
-| backend `.env` | `WEB_MATERIAL_ENABLED`, `WEB_MATERIAL_MAX_ARTICLES`, `WEB_MATERIAL_MAX_WORDS`, `MAX_COURSES_PER_USER` | true, 6, 3000, 25 |
+| backend `.env` | `WEB_MATERIAL_ENABLED`, `WEB_MATERIAL_MAX_ARTICLES`, `WEB_MATERIAL_MAX_WORDS`, `WEB_MATERIAL_CONCEPT_WORDS`, `MAX_COURSES_PER_USER` | true, 15, 3000, 1500, 25 |
 | `frontend/.env.local` | `VITE_API_BASE_URL` | `/api` |
 | `frontend/.env.local` | `VITE_PROXY_TARGET` | `http://127.0.0.1:8000` |
 
