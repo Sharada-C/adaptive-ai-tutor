@@ -202,6 +202,23 @@ To reproduce or extend the benchmark from `backend/`:
 - Label answers blind: `python -m app.tutor.label_answers eval/grader_holdout_to_label.json`
 - Measure agreement: `python -m app.tutor.grader_agreement eval/grader_holdout_labels.json`
 
+## Retrieval quality
+
+Lessons and quizzes retrieve top-3 chunks using `nomic-embed-text` embeddings in PostgreSQL (`pgvector`) and filter out results below a `0.50` cosine similarity threshold.
+
+We measured retrieval against a 16-passage corpus covering biology, networking, databases, operating systems, and data structures—deliberately including near-neighbour concepts (such as TCP vs. UDP, router vs. switch, and stack vs. queue)—across 24 paraphrased queries (20 answerable, including 2 multi-passage queries, and 4 off-corpus; full report in `backend/eval/retrieval_eval.report.json`):
+
+| Mode | Recall@3 (20 answerable) | Top-1 accuracy | MRR | Off-corpus rejected (4 unanswerable) |
+| :--- | :---: | :---: | :---: | :---: |
+| Ranking only (no threshold) | **100% (20/20)** | **100% (20/20)** | **1.00** | 0 / 4 |
+| **As the app runs (`similarity >= 0.50`)** | **100% (20/20)** | **100% (20/20)** | **1.00** | **2 / 4** |
+
+**What this shows and where the threshold has limits:** Dense ranking distinguishes close concepts cleanly (`1.00` MRR, `100%` Recall@3), and the `0.50` similarity cutoff rejects completely unrelated queries (e.g., geography or baking). However, 2 same-domain off-corpus questions (*mitochondria* near photosynthesis, and *binary search trees* near stacks) still cleared `0.50` because embedding similarity captures topical proximity rather than exact answerability. Because the corpus is small and clean, treat `100%` as an upper bound on short passages rather than noisy multi-page PDFs.
+
+To reproduce from `backend/` (with Postgres and Ollama running):
+- `python -m app.rag.retrieval_eval`
+
+
 
 ## License and attribution
 
