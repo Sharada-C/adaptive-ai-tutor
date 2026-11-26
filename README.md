@@ -183,11 +183,9 @@ Neither suite needs Ollama.
 
 ## Grading quality
 
-## Grading quality
-
 Answers are graded by a local model, which is the weakest link of the tutor. A flagged contradiction only counts when a second, simpler check explicitly agrees; otherwise the answer gets partial credit and no misconception is stored. When `COVERAGE_CHECK=true` (default), answers with no contradictions are also checked to confirm they cover at least 75% of the reference answer's essential ideas before receiving full credit.
 
-We evaluated the grader against two blind human-labelled sets (67 student answers across 16 questions in biology, networking, databases, and operating systems; all reports in `backend/eval/`):
+We evaluated the grader against two blind human-labelled sets (67 student answers across 16 questions in biology, networking, databases, operating systems and data structures; all reports in `backend/eval/`):
 
 | Dataset | Grader model & config | Exact agreement (`c`/`p`/`i`) | False rejects (`c` -> `i`) | False credit (`i` -> `c`) |
 | :--- | :--- | :---: | :---: | :---: |
@@ -197,6 +195,8 @@ We evaluated the grader against two blind human-labelled sets (67 student answer
 | **Held-out set (34 unseen answers, 8 questions)** | **`qwen2.5:7b` + coverage *(headline)*** | **76% (26/34)** | **0 / 13** | **0 / 10** |
 
 On the unseen held-out set, `qwen2.5:7b` with the coverage check achieved **76% exact three-way agreement** with **zero false rejects (0/13)** and **zero false credit (0/10)** (~5.2s per answer on local Ollama).
+
+What is still wrong on the held-out set: 4 of 13 correct answers got partial credit instead of full credit (the coverage check can be over-strict), and 3 of 11 partial answers got full credit, which is why exact agreement is 76% and not higher. "Zero false credit" means none of the 10 wrong answers was graded correct in this sample. The labels were written by one person and the sets are small, so treat the numbers as indicative, not as a guarantee.
 
 To reproduce or extend the benchmark from `backend/`:
 - Label answers blind: `python -m app.tutor.label_answers eval/grader_holdout_to_label.json`
