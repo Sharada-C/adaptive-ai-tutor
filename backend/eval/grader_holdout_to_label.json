@@ -1,0 +1,172 @@
+[
+  {
+    "question": "Why do plants look green?",
+    "expected_answer": "Chlorophyll absorbs mostly red and blue light and reflects green light, so plants appear green.",
+    "student_answer": "Chlorophyll soaks up red and blue light but bounces green back, which is why leaves look green."
+  },
+  {
+    "question": "Why do plants look green?",
+    "expected_answer": "Chlorophyll absorbs mostly red and blue light and reflects green light, so plants appear green.",
+    "student_answer": "Chlorophyll is a green pigment that is found in leaves."
+  },
+  {
+    "question": "Why do plants look green?",
+    "expected_answer": "Chlorophyll absorbs mostly red and blue light and reflects green light, so plants appear green.",
+    "student_answer": "Plants absorb green light the most, so they look green."
+  },
+  {
+    "question": "Why do plants look green?",
+    "expected_answer": "Chlorophyll absorbs mostly red and blue light and reflects green light, so plants appear green.",
+    "student_answer": "They look green because the green wavelengths are reflected rather than absorbed by chlorophyll."
+  },
+  {
+    "question": "What are the inputs and outputs of photosynthesis?",
+    "expected_answer": "Photosynthesis uses light energy to convert carbon dioxide and water into glucose and oxygen.",
+    "student_answer": "Plants take in oxygen and water and make carbon dioxide and glucose with sunlight."
+  },
+  {
+    "question": "What are the inputs and outputs of photosynthesis?",
+    "expected_answer": "Photosynthesis uses light energy to convert carbon dioxide and water into glucose and oxygen.",
+    "student_answer": "Using sunlight, the plant turns carbon dioxide and water into glucose and releases oxygen."
+  },
+  {
+    "question": "What are the inputs and outputs of photosynthesis?",
+    "expected_answer": "Photosynthesis uses light energy to convert carbon dioxide and water into glucose and oxygen.",
+    "student_answer": "Photosynthesis makes glucose from sunlight."
+  },
+  {
+    "question": "What are the inputs and outputs of photosynthesis?",
+    "expected_answer": "Photosynthesis uses light energy to convert carbon dioxide and water into glucose and oxygen.",
+    "student_answer": "Plants take in carbon dioxide and give out oxygen."
+  },
+  {
+    "question": "What does DHCP do?",
+    "expected_answer": "DHCP automatically assigns IP addresses and related settings such as the subnet mask, default gateway and DNS server to devices when they join a network.",
+    "student_answer": "DHCP hands out IP addresses automatically to devices joining a network, along with settings such as the gateway and DNS server."
+  },
+  {
+    "question": "What does DHCP do?",
+    "expected_answer": "DHCP automatically assigns IP addresses and related settings such as the subnet mask, default gateway and DNS server to devices when they join a network.",
+    "student_answer": "DHCP encrypts the traffic between a device and the router."
+  },
+  {
+    "question": "What does DHCP do?",
+    "expected_answer": "DHCP automatically assigns IP addresses and related settings such as the subnet mask, default gateway and DNS server to devices when they join a network.",
+    "student_answer": "DHCP translates domain names into IP addresses."
+  },
+  {
+    "question": "What does DHCP do?",
+    "expected_answer": "DHCP automatically assigns IP addresses and related settings such as the subnet mask, default gateway and DNS server to devices when they join a network.",
+    "student_answer": "DHCP gives devices an IP address."
+  },
+  {
+    "question": "What is the purpose of a primary key in a table?",
+    "expected_answer": "A primary key uniquely identifies each row in a table; its values must be unique and cannot be null.",
+    "student_answer": "A primary key links a table to a column of another table."
+  },
+  {
+    "question": "What is the purpose of a primary key in a table?",
+    "expected_answer": "A primary key uniquely identifies each row in a table; its values must be unique and cannot be null.",
+    "student_answer": "It makes searching faster."
+  },
+  {
+    "question": "What is the purpose of a primary key in a table?",
+    "expected_answer": "A primary key uniquely identifies each row in a table; its values must be unique and cannot be null.",
+    "student_answer": "It is the column that uniquely identifies every row, so no two rows share the same value and it can't be empty."
+  },
+  {
+    "question": "What is the purpose of a primary key in a table?",
+    "expected_answer": "A primary key uniquely identifies each row in a table; its values must be unique and cannot be null.",
+    "student_answer": "A primary key is a unique value in a table."
+  },
+  {
+    "question": "What is a deadlock in an operating system?",
+    "expected_answer": "A deadlock is a situation where a set of processes are each waiting for resources held by another process in the set, so none of them can proceed.",
+    "student_answer": "A deadlock is when a process gets stuck."
+  },
+  {
+    "question": "What is a deadlock in an operating system?",
+    "expected_answer": "A deadlock is a situation where a set of processes are each waiting for resources held by another process in the set, so none of them can proceed.",
+    "student_answer": "Two or more processes are blocked because each needs a resource that another one is holding, and none of them can continue."
+  },
+  {
+    "question": "What is a deadlock in an operating system?",
+    "expected_answer": "A deadlock is a situation where a set of processes are each waiting for resources held by another process in the set, so none of them can proceed.",
+    "student_answer": "Deadlock is when processes each hold a resource and wait for one held by another, so they all stay stuck forever."
+  },
+  {
+    "question": "What is a deadlock in an operating system?",
+    "expected_answer": "A deadlock is a situation where a set of processes are each waiting for resources held by another process in the set, so none of them can proceed.",
+    "student_answer": "A deadlock happens when the CPU runs too many processes at once and becomes slow."
+  },
+  {
+    "question": "What is the difference between a stack and a queue?",
+    "expected_answer": "A stack is last-in, first-out (LIFO), where the most recently added item is removed first; a queue is first-in, first-out (FIFO), where the oldest item is removed first.",
+    "student_answer": "A queue is like a line of people and a stack is also a way to store items."
+  },
+  {
+    "question": "What is the difference between a stack and a queue?",
+    "expected_answer": "A stack is last-in, first-out (LIFO), where the most recently added item is removed first; a queue is first-in, first-out (FIFO), where the oldest item is removed first.",
+    "student_answer": "A stack is first in first out and a queue is last in first out."
+  },
+  {
+    "question": "What is the difference between a stack and a queue?",
+    "expected_answer": "A stack is last-in, first-out (LIFO), where the most recently added item is removed first; a queue is first-in, first-out (FIFO), where the oldest item is removed first.",
+    "student_answer": "A stack is LIFO."
+  },
+  {
+    "question": "What is the difference between a stack and a queue?",
+    "expected_answer": "A stack is last-in, first-out (LIFO), where the most recently added item is removed first; a queue is first-in, first-out (FIFO), where the oldest item is removed first.",
+    "student_answer": "A stack removes the last item added (LIFO) while a queue removes the first item added (FIFO)."
+  },
+  {
+    "question": "What is the difference between a stack and a queue?",
+    "expected_answer": "A stack is last-in, first-out (LIFO), where the most recently added item is removed first; a queue is first-in, first-out (FIFO), where the oldest item is removed first.",
+    "student_answer": "In a queue the oldest element leaves first, like people in a line, but in a stack the newest element leaves first, like a pile of plates."
+  },
+  {
+    "question": "What is the purpose of the TCP three-way handshake?",
+    "expected_answer": "The three-way handshake (SYN, SYN-ACK, ACK) establishes a TCP connection by letting both sides confirm they can send and receive and synchronise their sequence numbers.",
+    "student_answer": "The client sends SYN, the server sends SYN-ACK and then the client sends ACK."
+  },
+  {
+    "question": "What is the purpose of the TCP three-way handshake?",
+    "expected_answer": "The three-way handshake (SYN, SYN-ACK, ACK) establishes a TCP connection by letting both sides confirm they can send and receive and synchronise their sequence numbers.",
+    "student_answer": "It sets up a TCP connection: the client sends SYN, the server replies SYN-ACK, and the client sends ACK, so both sides agree on sequence numbers and know the other can send and receive."
+  },
+  {
+    "question": "What is the purpose of the TCP three-way handshake?",
+    "expected_answer": "The three-way handshake (SYN, SYN-ACK, ACK) establishes a TCP connection by letting both sides confirm they can send and receive and synchronise their sequence numbers.",
+    "student_answer": "It encrypts the connection so that nobody can read the data."
+  },
+  {
+    "question": "What is the purpose of the TCP three-way handshake?",
+    "expected_answer": "The three-way handshake (SYN, SYN-ACK, ACK) establishes a TCP connection by letting both sides confirm they can send and receive and synchronise their sequence numbers.",
+    "student_answer": "It is used to start a connection between two computers."
+  },
+  {
+    "question": "What is transpiration and why does it matter?",
+    "expected_answer": "Transpiration is the loss of water vapour from leaves through the stomata; it pulls water and minerals up the xylem from the roots and helps cool the plant.",
+    "student_answer": "Transpiration is when plants lose water through their leaves."
+  },
+  {
+    "question": "What is transpiration and why does it matter?",
+    "expected_answer": "Transpiration is the loss of water vapour from leaves through the stomata; it pulls water and minerals up the xylem from the roots and helps cool the plant.",
+    "student_answer": "Transpiration is the movement of sugars from the leaves to the roots through the phloem."
+  },
+  {
+    "question": "What is transpiration and why does it matter?",
+    "expected_answer": "Transpiration is the loss of water vapour from leaves through the stomata; it pulls water and minerals up the xylem from the roots and helps cool the plant.",
+    "student_answer": "Transpiration is the process by which plants take in carbon dioxide at night."
+  },
+  {
+    "question": "What is transpiration and why does it matter?",
+    "expected_answer": "Transpiration is the loss of water vapour from leaves through the stomata; it pulls water and minerals up the xylem from the roots and helps cool the plant.",
+    "student_answer": "Transpiration is water vapour evaporating from the leaves through the stomata; it pulls water up the xylem from the roots and cools the leaf."
+  },
+  {
+    "question": "What is transpiration and why does it matter?",
+    "expected_answer": "Transpiration is the loss of water vapour from leaves through the stomata; it pulls water and minerals up the xylem from the roots and helps cool the plant.",
+    "student_answer": "Water evaporates out of the stomata, and that loss draws more water and minerals up through the xylem."
+  }
+]
