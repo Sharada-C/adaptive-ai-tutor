@@ -191,6 +191,11 @@ from `backend`, `python -m app.tutor.grader_agreement`. Run it again with a
 different `GRADER_MODEL` to compare models; report the numbers you measured,
 not estimates.
 
+To build an independent labelled set, run `python -m app.tutor.label_answers`
+from `backend`: it shows 33 student answers (`eval/grader_to_label.json`, no
+suggested grades) and saves your verdicts to `eval/grader_labels.json`. Then
+`python -m app.tutor.grader_agreement eval/grader_labels.json`.
+
 ## License and attribution
 
 Code: MIT, see [LICENSE](LICENSE). Course material fetched from Wikipedia is
