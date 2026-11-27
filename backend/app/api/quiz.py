@@ -29,14 +29,46 @@ router = APIRouter(
 )
 
 
-def _generate_with_fallback(**kwargs) -> dict:
+def is_off_topic(
+    question: str,
+    concept_name: str,
+    other_concept_names: list[str],
+) -> bool:
+    """True when a question names a sibling concept but not its own.
+
+    A model given a chunk that covers several concepts can drift to a
+    neighbour (a "Data Link Layer" quiz asking about the physical layer).
+    """
+
+    text = question.lower()
+
+    if concept_name.lower() in text:
+        return False
+
+    return any(
+        name.lower() in text
+        for name in other_concept_names
+        if name and name.lower() != concept_name.lower()
+    )
+
+
+def _generate_with_fallback(other_concept_names=None, **kwargs) -> dict:
     """The model is not deterministic and the grounding check is strict.
     Try a few drafts; if none is grounded, ask a question built directly
     from the retrieved material instead of failing the student."""
 
     for attempt in range(QUIZ_GENERATION_ATTEMPTS):
         try:
-            return generate_quiz(**kwargs)
+            generated = generate_quiz(**kwargs)
+
+            if is_off_topic(
+                generated.get("question", ""),
+                kwargs["concept"],
+                other_concept_names or [],
+            ):
+                raise ValueError("question is about a different concept")
+
+            return generated
         except ValueError as error:
             logger.info(
                 "quiz attempt %d/%d rejected: %s",
@@ -107,10 +139,25 @@ def create_quiz(
     # ---------------------------------------------------------
     knowledge_chunks = retrieve_with_subject_fallback(
         db=db,
-        query=context["concept"],
+        query=(
+            f"{context['concept']}. "
+            f"{context['concept_description'] or ''}"
+        ).strip(),
         concept_id=request.concept_id,
         subject_id=concept.subject_id if concept else None,
         limit=3,
+    )
+
+    other_concept_names = (
+        [
+            name
+            for (name,) in db.query(Concept.name).filter(
+                Concept.subject_id == concept.subject_id,
+                Concept.id != concept.id,
+            )
+        ]
+        if concept
+        else []
     )
 
     knowledge_text = "\n\n".join(
@@ -129,6 +176,7 @@ def create_quiz(
     # ---------------------------------------------------------
     try:
         generated = _generate_with_fallback(
+            other_concept_names=other_concept_names,
             concept=context["concept"],
             concept_description=context["concept_description"],
             student_level=context["student_level"],
