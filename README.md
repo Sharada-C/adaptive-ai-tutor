@@ -8,6 +8,8 @@ what to do next: teach, reteach a misconception, practise, or move on.
 - **Backend** – FastAPI, PostgreSQL + pgvector (retrieval), Ollama (LLM and embeddings)
 - **Frontend** – React + Vite
 
+![Architecture](docs/architecture.svg)
+
 ## Prerequisites
 
 - Python 3.11+ and Node 20+
