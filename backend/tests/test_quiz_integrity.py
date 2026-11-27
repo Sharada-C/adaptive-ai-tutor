@@ -217,3 +217,21 @@ def test_no_material_at_all_is_still_an_error(monkeypatch, test_student):
     )
 
     assert response.status_code == 422
+
+
+def test_off_topic_question_detected():
+    from app.api.quiz import is_off_topic
+
+    others = ["Physical Layer", "Network Layer"]
+
+    assert is_off_topic(
+        "What is the primary function of the physical layer in the OSI model?",
+        "Data Link Layer",
+        others,
+    )
+    assert not is_off_topic(
+        "How does the data link layer frame data before the physical layer?",
+        "Data Link Layer",
+        others,
+    )
+    assert not is_off_topic("What is a MAC address?", "Data Link Layer", others)
